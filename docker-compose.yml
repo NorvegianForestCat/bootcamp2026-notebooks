@@ -13,7 +13,7 @@ x-airflow-volumes: &airflow_volumes
 services:
 
   rustfs:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:1.0.3
     profiles: [base]
     container_name: dota-rustfs
     restart: unless-stopped
@@ -145,7 +145,7 @@ services:
 
 
   trino:
-    image: trinodb/trino:latest
+    image: trinodb/trino:484
     profiles: [compute]
     container_name: dota-trino
     restart: unless-stopped
@@ -159,7 +159,7 @@ services:
 
 
   superset:
-    image: apache/superset:latest
+    image: apache/superset:6.1.0
     profiles: [bi]
     container_name: dota-superset
     restart: unless-stopped
@@ -179,7 +179,7 @@ services:
 
 
   # marquez:
-  #   image: marquezproject/marquez:latest
+  #   image: marquezproject/marquez:0.51.1
   #   profiles: [lineage]
   #   ports: ["5000:5000", "5001:5001"]
   #   mem_limit: 512m
