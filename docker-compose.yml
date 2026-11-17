@@ -1,0 +1,197 @@
+name: dota-lakehouse
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-airflow-volumes: &airflow_volumes
+  - ./infra/airflow/dags:/opt/airflow/dags
+  - ./infra/airflow/logs:/opt/airflow/logs
+
+services:
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    profiles: [base]
+    container_name: dota-rustfs
+    restart: unless-stopped
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_REGION: ${S3_REGION:-us-east-1}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ${DATA_DIR:-/data}/rustfs:/data
+    mem_limit: 512m
+    logging: *logging
+
+  postgres:
+    image: postgres:15-alpine
+    profiles: [base]
+    container_name: dota-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-dota}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB:-dota}
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=100"]
+    ports:
+      - "5432:5432"
+    volumes:
+      - ${DATA_DIR:-/data}/pg:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-dota}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  mongo:
+    image: mongo:6
+    profiles: [base]
+    container_name: dota-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-dota}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - ${DATA_DIR:-/data}/mongo:/data/db
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1})'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+
+
+  airflow-init:
+    image: apache/airflow:2.9.3-python3.11
+    profiles: [etl]
+    container_name: dota-airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &airflow_env
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD}@postgres:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET}
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: bash -c "airflow db migrate && airflow users create -r Admin -u admin -p admin -f Admin -l User -a admin@local"
+    volumes: *airflow_volumes
+    mem_limit: 1g
+    logging: *logging
+
+  airflow-webserver:
+    image: apache/airflow:2.9.3-python3.11
+    profiles: [etl]
+    container_name: dota-airflow-webserver
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow_env
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: airflow webserver --port 8080
+    ports:
+      - "8081:8080"
+    volumes: *airflow_volumes
+    mem_limit: 1g
+    logging: *logging
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.3-python3.11
+    profiles: [etl]
+    container_name: dota-airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow_env
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: airflow scheduler
+    volumes: *airflow_volumes
+    mem_limit: 1g
+    logging: *logging
+
+  spark:
+    image: bitnami/spark:3.5
+    profiles: [etl]
+    container_name: dota-spark
+    restart: unless-stopped
+    command: sleep infinity 
+    environment:
+      SPARK_DRIVER_MEMORY: 2g
+    volumes:
+      - ./infra/spark/apps:/opt/spark-apps
+      - ./infra/spark/jars:/opt/spark-jars
+      - ./infra/spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+    mem_limit: 2g
+    logging: *logging
+
+
+  trino:
+    image: trinodb/trino:latest
+    profiles: [compute]
+    container_name: dota-trino
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/trino/etc:/etc/trino
+    mem_limit: 1536m
+    logging: *logging
+
+
+
+  superset:
+    image: apache/superset:latest
+    profiles: [bi]
+    container_name: dota-superset
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+    command: bash -c "superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@local --password admin && superset init && superset run -h 0.0.0.0 -p 8088"
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./infra/superset/superset_config.py:/app/superset_config.py:ro
+      - ${DATA_DIR:-/data}/superset:/app/superset_home
+    mem_limit: 1536m
+    logging: *logging
+
+
+  # marquez:
+  #   image: marquezproject/marquez:latest
+  #   profiles: [lineage]
+  #   ports: ["5000:5000", "5001:5001"]
+  #   mem_limit: 512m
+
+
+  # minio:
+  #   image: minio/minio:latest
+  #   profiles: [base]
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+  #     MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+  #   ports: ["9000:9000", "9001:9001"]
+  #   volumes: ["${DATA_DIR:-/data}/minio:/data"]
+  #   mem_limit: 512m
