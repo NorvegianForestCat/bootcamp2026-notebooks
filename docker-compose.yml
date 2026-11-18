@@ -29,6 +29,17 @@ services:
     mem_limit: 512m
     logging: *logging
 
+  # minio:
+  #   image: minio/minio:latest
+  #   profiles: [base]
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+  #     MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+  #   ports: ["9000:9000", "9001:9001"]
+  #   volumes: ["${DATA_DIR:-/data}/minio:/data"]
+  #   mem_limit: 512m
+
   postgres:
     image: postgres:15-alpine
     profiles: [base]
@@ -185,13 +196,4 @@ services:
   #   mem_limit: 512m
 
 
-  # minio:
-  #   image: minio/minio:latest
-  #   profiles: [base]
-  #   command: server /data --console-address ":9001"
-  #   environment:
-  #     MINIO_ROOT_USER: ${S3_ACCESS_KEY}
-  #     MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
-  #   ports: ["9000:9000", "9001:9001"]
-  #   volumes: ["${DATA_DIR:-/data}/minio:/data"]
-  #   mem_limit: 512m
+
