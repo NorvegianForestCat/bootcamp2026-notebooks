@@ -10,6 +10,7 @@ x-airflow-volumes: &airflow_volumes
   - ./infra/airflow/dags:/opt/airflow/dags
   - ./infra/airflow/logs:/opt/airflow/logs
   - ./infra/spark/jars:/opt/spark-jars
+  - ./src:/opt/spark-apps
 
 services:
   # ===========================================================================
@@ -180,6 +181,11 @@ services:
       PG_PASSWORD: ${PG_PASSWORD}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
+      PYTHONPATH: /opt/spark-apps:/opt/spark-apps/common
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
       <<: *airflow_env
 
     user: "${AIRFLOW_UID:-50000}:0"
@@ -206,20 +212,25 @@ services:
       - "127.0.0.1:7077:7077"
       - "127.0.0.1:8082:8082"
     volumes:
-      - ./infra/spark/apps:/opt/spark-apps
+      - ./src:/opt/spark-apps
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    environment:
+      PYTHONPATH: /opt/spark-apps:/opt/spark-apps/common
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
     deploy:
       resources:
         limits:
           memory: 1G
-    logging: *logging
-    environment:
-      PG_USER: ${PG_USER}
-      PG_PASSWORD: ${PG_PASSWORD}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    logging: *logging      
 
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082/ || exit 1"]
@@ -242,15 +253,20 @@ services:
     ports:
       - "127.0.0.1:8083:8083"
     volumes:
-      - ./infra/spark/apps:/opt/spark-apps
+      - ./src:/opt/spark-apps
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     environment:
-      SPARK_WORKER_MEMORY: 2g
-      SPARK_WORKER_CORES: 2
+      PYTHONPATH: /opt/spark-apps:/opt/spark-apps/common
       PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: 2
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
     deploy:
