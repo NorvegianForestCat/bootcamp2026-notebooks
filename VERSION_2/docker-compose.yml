@@ -316,8 +316,6 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: marquez
       POSTGRES_USER: marquez
-      PG_PASSWORD: ${PG_PASSWORD}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
       MARQUEZ_DB_HOST: postgres
       MARQUEZ_DB_PORT: 5432
       MARQUEZ_DB_NAME: marquez
