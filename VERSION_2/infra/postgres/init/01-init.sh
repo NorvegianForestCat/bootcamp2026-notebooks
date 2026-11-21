@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+cat >> /var/lib/postgresql/data/pg_hba.conf <<-EOF
+
+# Allow connections from Docker network for airflow and marquez users
+host    airflow         airflow         172.16.0.0/12            md5
+host    marquez         marquez         172.16.0.0/12            md5
+host    all             all             172.16.0.0/12            md5
+EOF
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -c "SELECT pg_reload_conf();"
+
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOF
     CREATE USER airflow WITH PASSWORD '${AIRFLOW_PASSWORD}';
     CREATE DATABASE airflow OWNER airflow;
