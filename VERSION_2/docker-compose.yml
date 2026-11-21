@@ -316,6 +316,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: marquez
       POSTGRES_USER: marquez
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
       MARQUEZ_DB_HOST: postgres
       MARQUEZ_DB_PORT: 5432
       MARQUEZ_DB_NAME: marquez
@@ -323,12 +324,13 @@ services:
       MARQUEZ_DB_PASSWORD: ${PG_PASSWORD}
     ports:
       - "127.0.0.1:5000:5000"
+      - "127.0.0.1:5001:5001"
     deploy:
       resources:
         limits:
           memory: 1G
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000 || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
