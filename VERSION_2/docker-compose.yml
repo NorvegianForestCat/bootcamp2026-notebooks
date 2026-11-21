@@ -50,7 +50,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${PG_USER:-dota}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      PG_PASSWORD: ${PG_PASSWORD}
       POSTGRES_DB: ${PG_DB:-dota}
       AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD}
       MARQUEZ_PASSWORD: ${PG_PASSWORD}
@@ -313,7 +313,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: marquez
       POSTGRES_USER: marquez
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      PG_PASSWORD: ${PG_PASSWORD}
     ports:
       - "127.0.0.1:5000:5000"
     deploy:
