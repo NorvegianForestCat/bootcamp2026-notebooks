@@ -312,7 +312,7 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: marquez
-      POSTGRES_USER: ${PG_USER:-dota}
+      POSTGRES_USER: marquez
       POSTGRES_PASSWORD: ${PG_PASSWORD}
     ports:
       - "127.0.0.1:5000:5000"
