@@ -269,3 +269,4 @@ dags/__pycache__/
 .dbt/
 dbt_packages/
 target/
+res
