@@ -28,3 +28,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE SCHEMA IF NOT EXISTS stage;
     CREATE SCHEMA IF NOT EXISTS mart;
 EOF
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "marquez" <<-EOF
+    GRANT ALL ON SCHEMA public TO marquez;
+EOF
