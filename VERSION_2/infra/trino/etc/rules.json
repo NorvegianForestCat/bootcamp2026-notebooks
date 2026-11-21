@@ -1,0 +1,15 @@
+{
+    "catalogs": 
+    [
+        {
+        "user": "superset",
+            "catalog": ".*",
+            "allow": "read-only"
+        },
+        {
+            "user": "admin",
+            "catalog": ".*",
+            "allow": "all"
+        }
+    ]
+}
