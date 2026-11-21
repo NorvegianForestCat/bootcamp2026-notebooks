@@ -52,6 +52,8 @@ services:
       POSTGRES_USER: ${PG_USER:-dota}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       POSTGRES_DB: ${PG_DB:-dota}
+      AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD}
+      MARQUEZ_PASSWORD: ${PG_PASSWORD}
     command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=100"]
     volumes:
       - pg_data:/var/lib/postgresql/data
