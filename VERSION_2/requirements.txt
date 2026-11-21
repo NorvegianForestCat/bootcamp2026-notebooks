@@ -1,0 +1,22 @@
+# Core data processing
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=14.0.0
+
+# Statistics and ML (for case analysis)
+scipy>=1.10.0
+statsmodels>=0.14.0
+scikit-learn>=1.3.0
+
+# Database connectors (for local testing / auxiliary scripts)
+psycopg2-binary>=2.9.9
+pymongo>=4.6.0
+
+# HTTP and API clients
+requests>=2.31.0
+httpx>=0.25.0
+
+# Utilities
+python-dotenv>=1.0.0
+tenacity>=8.2.3
+pydantic>=2.5.0
