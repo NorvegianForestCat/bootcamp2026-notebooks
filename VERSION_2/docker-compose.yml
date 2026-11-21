@@ -348,8 +348,6 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: ${PG_PORT:-5432}
       POSTGRES_DB: ${PG_DB}
-      POSTGRES_USER: ${PG_USER}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
       MARQUEZ_CONFIG: /usr/src/app/marquez.yml
       MARQUEZ_DB_HOST: ${MARQUEZ_DB_HOST:-localhost}
       MARQUEZ_DB_PORT: ${MARQUEZ_DB_PORT:-5432}

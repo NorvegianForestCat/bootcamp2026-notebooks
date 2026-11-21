@@ -214,10 +214,12 @@ def main() -> None:
     5. Writes all data to the lakehouse.raw layer as Iceberg tables
 
     Environment Variables Required:
+        PG_HOST: PostgreSQL host (default: 'postgres')
         PG_USER: PostgreSQL username
         PG_PASSWORD: PostgreSQL password
         PG_PORT: PostgreSQL port (default: 5432)
         PG_DB: PostgreSQL database name (default: 'dota')
+        MONGO_HOST: MongoDB host (default: 'mongo')
         MONGO_USER: MongoDB username
         MONGO_PASSWORD: MongoDB password
         MONGO_DB: MongoDB database name (default: 'dota_events')
@@ -231,18 +233,20 @@ def main() -> None:
         >>> python -m src.jobs.extract_raw
         # Extracts PostgreSQL and MongoDB data to lakehouse.raw
     """
+    pg_host = os.getenv("PG_HOST", "postgres")
     pg_user = os.environ["PG_USER"]
     pg_password = os.environ["PG_PASSWORD"]
     pg_port = os.getenv("PG_PORT", 5432)
     pg_db = os.getenv("PG_DB", "dota")
-    pg_url = f"jdbc:postgresql://postgres:{pg_port}/{pg_db}"
+    pg_url = f"jdbc:postgresql://{pg_host}:{pg_port}/{pg_db}"
 
+    mongo_host = os.getenv("MONGO_HOST", "mongo")
     mongo_user = os.environ["MONGO_USER"]
     mongo_password = os.environ["MONGO_PASSWORD"]
     mongo_db = os.getenv("MONGO_DB", "dota_events")
     mongo_port = os.getenv("MONGO_PORT", 27017)
     mongo_uri = (
-        f"mongodb://{mongo_user}:{mongo_password}@mongo:{mongo_port}/?authSource=admin"
+        f"mongodb://{mongo_user}:{mongo_password}@{mongo_host}:{mongo_port}/?authSource=admin"
     )
 
     with SparkSessionContextManager("extract-raw") as ctx:
