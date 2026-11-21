@@ -1,0 +1,336 @@
+name: dota-lakehouse
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-airflow-volumes: &airflow_volumes
+  - ./infra/airflow/dags:/opt/airflow/dags
+  - ./infra/airflow/logs:/opt/airflow/logs
+  - ./infra/spark/jars:/opt/spark-jars
+
+services:
+  # ===========================================================================
+  # OBJECT STORAGE (S3-compatible)
+  # ===========================================================================
+  rustfs:
+    image: rustfs/rustfs:1.0.6
+    container_name: dota-rustfs
+    restart: unless-stopped
+    profiles: [base]
+    command: server /data --console-address ":9001"
+    environment:
+      RUSTFS_ROOT_USER: ${S3_ACCESS_KEY}
+      RUSTFS_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    ports:
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - rustfs_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # POSTGRESQL (Metadata + Lakehouse catalog)
+  # Ports NOT exposed — access via Docker network or SSH tunnel only
+  # ===========================================================================
+  postgres:
+    image: postgres:15-alpine
+    profiles: [base]
+    container_name: dota-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-dota}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB:-dota}
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=100"]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-dota}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  # ===========================================================================
+  # MONGODB (Game events)
+  # Ports NOT exposed — access via Docker network or SSH tunnel only
+  # ===========================================================================
+  mongo:
+    image: mongo:6
+    profiles: [base]
+    container_name: dota-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-dota}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5", "--bind_ip_all"]
+    volumes:
+      - mongo_data:/data/db
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1})'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  # ===========================================================================
+  # AIRFLOW (Orchestration)
+  # ===========================================================================
+  airflow-init:
+    image: apache/airflow:2.11.2-python3.11
+    profiles: [etl]
+    container_name: dota-airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &airflow_env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD}@postgres:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET}
+      AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: bash -c "airflow db migrate && (airflow users create -r Admin -u admin -p ${AIRFLOW_ADMIN_PASSWORD} -f Admin -l User -e admin@local || true)"
+    volumes: *airflow_volumes
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging: *logging
+
+  airflow-webserver:
+    image: apache/airflow:2.11.2-python3.11
+    profiles: [etl]
+    container_name: dota-airflow-webserver
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow_env
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: airflow webserver --port 8080
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes: *airflow_volumes
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    image: apache/airflow:2.11.2-python3.11
+    profiles: [etl]
+    container_name: dota-airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment: 
+      PG_USER: ${PG_USER:-dota}
+      PG_PASSWORD: ${PG_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      <<: *airflow_env
+
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: airflow scheduler
+    volumes: *airflow_volumes
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging: *logging
+
+  # ===========================================================================
+  # SPARK CLUSTER (Master + Worker)
+  # ===========================================================================
+  spark-master:
+    image: apache/spark:3.5.8
+    profiles: [etl]
+    container_name: dota-spark-master
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+      --host 0.0.0.0 --port 7077 --webui-port 8082
+    ports:
+      - "127.0.0.1:7077:7077"
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - ./infra/spark/apps:/opt/spark-apps
+      - ./infra/spark/jars:/opt/spark-jars
+      - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging: *logging
+    environment:
+      PG_USER: ${PG_USER:-dota}
+      PG_PASSWORD: ${PG_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  spark-worker:
+    image: apache/spark:3.5.8
+    profiles: [etl]
+    container_name: dota-spark-worker
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077 --webui-port 8083
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8083:8083"
+    volumes:
+      - ./infra/spark/apps:/opt/spark-apps
+      - ./infra/spark/jars:/opt/spark-jars
+      - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    environment:
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: 2
+      PG_USER: ${PG_USER:-dota}
+      PG_PASSWORD: ${PG_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    logging: *logging
+
+  # ===========================================================================
+  # TRINO (SQL query engine)
+  # ===========================================================================
+  trino:
+    image: trinodb/trino:484
+    profiles: [compute]
+    container_name: dota-trino
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./infra/trino/etc:/etc/trino
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *logging
+
+  # ===========================================================================
+  # SUPERSET (BI & Visualization)
+  # ===========================================================================
+  superset:
+    image: apache/superset:6.1.0
+    profiles: [bi]
+    container_name: dota-superset
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+    command: bash -c "(superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@local --password ${SUPERSET_ADMIN_PASSWORD} || true) && superset init && superset run -h 0.0.0.0 -p 8088"
+    ports:
+      - "127.0.0.1:8088:8088"
+    volumes:
+      - ./infra/superset/superset_config.py:/app/superset_config.py:ro
+      - superset_data:/app/superset_home
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *logging
+
+  # ===========================================================================
+  # MARQUEZ (Data Lineage — OpenLineage)
+  # ===========================================================================
+  marquez:
+    image: marquezproject/marquez:0.51.1
+    container_name: dota-marquez
+    profiles: [lineage]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MARQUEZ_PORT: 5000
+      MARQUEZ_ADMIN_PORT: 5001
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: marquez
+      POSTGRES_USER: ${PG_USER:-dota}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    ports:
+      - "127.0.0.1:5000:5000"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *logging
+
+# ===========================================================================
+# NAMED VOLUMES — data persists across container restarts
+# ===========================================================================
+volumes:
+  pg_data:
+  mongo_data:
+  rustfs_data:
+  superset_data:
