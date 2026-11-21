@@ -74,7 +74,7 @@ services:
   # Ports NOT exposed — access via Docker network or SSH tunnel only
   # ===========================================================================
   mongo:
-    image: mongo:6
+    image: mongo:4.4
     profiles: [base]
     container_name: dota-mongo
     restart: unless-stopped
