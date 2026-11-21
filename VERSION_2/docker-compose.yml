@@ -54,6 +54,7 @@ services:
       POSTGRES_DB: ${PG_DB:-dota}
       AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD}
       MARQUEZ_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
     command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=100"]
     volumes:
       - pg_data:/var/lib/postgresql/data
@@ -199,6 +200,7 @@ services:
     environment:
       PG_USER: ${PG_USER:-dota}
       PG_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
 
@@ -231,6 +233,7 @@ services:
       SPARK_WORKER_CORES: 2
       PG_USER: ${PG_USER:-dota}
       PG_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
     deploy:
@@ -314,6 +317,7 @@ services:
       POSTGRES_DB: marquez
       POSTGRES_USER: marquez
       PG_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
     ports:
       - "127.0.0.1:5000:5000"
     deploy:
