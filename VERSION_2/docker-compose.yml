@@ -330,7 +330,7 @@ services:
         limits:
           memory: 1G
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001 || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001/healthcheck || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
