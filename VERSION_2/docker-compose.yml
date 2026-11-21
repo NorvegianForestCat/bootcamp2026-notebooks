@@ -49,9 +49,9 @@ services:
     container_name: dota-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${PG_USER:-dota}
+      POSTGRES_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
-      POSTGRES_DB: ${PG_DB:-dota}
+      POSTGRES_DB: ${PG_DB}
       AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD}
       MARQUEZ_PASSWORD: ${PG_PASSWORD}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
@@ -64,7 +64,7 @@ services:
         limits:
           memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-dota}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -80,7 +80,7 @@ services:
     container_name: dota-mongo
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-dota}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     command: ["mongod", "--wiredTigerCacheSizeGB", "0.5", "--bind_ip_all"]
     volumes:
@@ -159,7 +159,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
     environment: 
-      PG_USER: ${PG_USER:-dota}
+      PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
@@ -198,7 +198,7 @@ services:
           memory: 1G
     logging: *logging
     environment:
-      PG_USER: ${PG_USER:-dota}
+      PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
@@ -231,7 +231,7 @@ services:
     environment:
       SPARK_WORKER_MEMORY: 2g
       SPARK_WORKER_CORES: 2
-      PG_USER: ${PG_USER:-dota}
+      PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
@@ -318,6 +318,11 @@ services:
       POSTGRES_USER: marquez
       PG_PASSWORD: ${PG_PASSWORD}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
+      MARQUEZ_DB_HOST: postgres
+      MARQUEZ_DB_PORT: 5432
+      MARQUEZ_DB_NAME: marquez
+      MARQUEZ_DB_USER: marquez
+      MARQUEZ_DB_PASSWORD: ${PG_PASSWORD}
     ports:
       - "127.0.0.1:5000:5000"
     deploy:
