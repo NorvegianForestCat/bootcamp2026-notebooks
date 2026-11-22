@@ -21,7 +21,7 @@ if [ -n "$(docker ps -aq)" ]; then
 fi
 
 run_and_log cat infra/postgres/init/01-init.sh
-run_and_log docker compose --profile base --profile tools --profile etl --profile compute --profile bi --profile lineage up -d
+run_and_log docker compose --profile base --profile etl --profile compute --profile bi --profile lineage up -d
 
 run_and_log sleep $time
 
