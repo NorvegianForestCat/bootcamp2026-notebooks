@@ -141,7 +141,7 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD}@postgres:5432/airflow
       AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET}
-      AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077      
+      AIRFLOW_CONN_SPARK_DEFAULT: '{"conn_type": "spark", "host": "spark://spark-master", "port": 7077}'
       PYSPARK_PYTHON: /usr/bin/python3.11
       PYSPARK_DRIVER_PYTHON: python3
     user: "${AIRFLOW_UID:-50000}:0"
