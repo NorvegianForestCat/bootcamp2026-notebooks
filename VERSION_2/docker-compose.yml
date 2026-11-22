@@ -430,12 +430,13 @@ services:
       - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
 
   dota-generator:
+    image: dota-data-generator:latest
     container_name: dota-generator
-    profiles: [etl]
     build:
       context: .
       dockerfile: Dockerfile.dota
-    restart: unless-stopped
+    profiles: [tools]
+    restart: "unless-stopped"
 # ===========================================================================
 # NAMED VOLUMES — data persists across container restarts
 # ===========================================================================
