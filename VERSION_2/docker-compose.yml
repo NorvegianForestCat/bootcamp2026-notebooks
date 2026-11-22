@@ -207,7 +207,7 @@ services:
     restart: unless-stopped
     command: >
       /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-      --host 0.0.0.0 --port 7077 --webui-port 8082
+      --host 127.0.0.1 --port 7077 --webui-port 8082
     ports:
       - "127.0.0.1:7077:7077"
       - "127.0.0.1:8082:8082"
@@ -313,11 +313,18 @@ services:
     environment:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
-    command: bash -c "(superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@local --password ${SUPERSET_ADMIN_PASSWORD} || true) && superset init && superset run -h 0.0.0.0 -p 8088"
+    command: >
+      bash -c "
+        (superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@local --password ${SUPERSET_ADMIN_PASSWORD} || true) &&
+        superset init &&
+        (python /app/infra/superset/init_superset.py || echo 'Superset init script failed, continuing...') &&
+        superset run -h 127.0.0.1 -p 8088
+      "
     ports:
       - "127.0.0.1:8088:8088"
     volumes:
       - ./infra/superset/superset_config.py:/app/superset_config.py:ro
+      - ./infra/superset/init_superset.py:/app/infra/superset/init_superset.py:ro
       - superset_data:/app/superset_home
     deploy:
       resources:

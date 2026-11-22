@@ -33,10 +33,10 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc") -> None:
     logger.info("--- STAGE Layer Checks ---")
 
     # 1.1. Uniqueness and validity of clean_matches
-    stage_matches = spark.table("lakehouse.stage.pg__matches")
+    stage_matches = spark.table("lakehouse.stage.case03_pg__matches")
     dq.apply_rules(
         stage_matches,
-        "stage.pg__matches",
+        "lakehouse.stage.case03_pg__matches",
         [
             DQRule(
                 rule_id="DQ-STG-03",
@@ -63,10 +63,10 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc") -> None:
     logger.info("[PASS] DQ-STG-03, DQ-STG-05, DQ-STG-05B: STAGE matches are valid")
 
     # 1.2. Uniqueness and validity of clean_match_players
-    stage_players = spark.table("lakehouse.stage.pg__match_players")
+    stage_players = spark.table("lakehouse.stage.case03_pg__match_players")
     dq.apply_rules(
         stage_players,
-        "stage.pg__match_players",
+        "lakehouse.stage.case03_pg__match_players",
         [
             DQRule(
                 rule_id="DQ-STG-06A",
@@ -91,12 +91,12 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc") -> None:
     # ==========================================================================
     logger.info("--- MART Layer Checks ---")
 
-    mart_matches = spark.table("lakehouse.mart.pg__match_roshan_mart")
+    mart_matches = spark.table("lakehouse.mart.case03_pg__match_roshan_mart")
 
     # 2.1. Uniqueness of match_id in MART
     dq.apply_rules(
         mart_matches,
-        "mart.practice_case_03_match_roshan_mart",
+        "lakehouse.mart.case03_pg__match_roshan_mart",
         [
             DQRule(
                 rule_id="DQ-MRT-01",
@@ -114,7 +114,7 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc") -> None:
     # roshan_killed_by_radiant + roshan_killed_by_dire + roshan_killer_side_unknown == total_roshan_kills
     dq.apply_rules(
         mart_matches,
-        "mart.practice_case_03_match_roshan_mart",
+        "lakehouse.mart.case03_pg__match_roshan_mart",
         [
             DQRule(
                 rule_id="DQ-MRT-02",
@@ -130,10 +130,10 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc") -> None:
 
     # 2.3. Probability range in time_effect mart
     try:
-        time_effect = spark.table("lakehouse.mart.practice_case_03_roshan_time_effect")
+        time_effect = spark.table("lakehouse.mart.case03_pg__roshan_time_effect")
         dq.apply_rules(
             time_effect,
-            "mart.practice_case_03_roshan_time_effect",
+            "lakehouse.mart.case03_pg__roshan_time_effect",
             [
                 DQRule(
                     rule_id="DQ-MRT-03",
@@ -161,7 +161,7 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc") -> None:
             ROUND(AVG(CASE WHEN total_roshan_kills > 0 THEN 1.0 ELSE 0.0 END) * 100, 2) AS pct_matches_with_roshan,
             SUM(total_roshan_kills) AS total_roshan_kills,
             ROUND(SUM(roshan_killer_side_unknown) * 100.0 / NULLIF(SUM(total_roshan_kills), 0), 3) AS pct_unknown_side
-        FROM lakehouse.mart.practice_case_03_match_roshan_mart
+        FROM lakehouse.mart.case03_pg__match_roshan_mart
     """)
     
     summary.show(truncate=False)
