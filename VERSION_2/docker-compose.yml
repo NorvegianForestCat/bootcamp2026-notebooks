@@ -430,7 +430,6 @@ services:
       - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
 
   dota-generator:
-    image: dota-data-generator:latest
     container_name: dota-generator
     build:
       context: .
