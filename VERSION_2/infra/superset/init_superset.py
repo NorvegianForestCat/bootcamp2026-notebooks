@@ -43,7 +43,16 @@ def get_auth_token(session: requests.Session) -> str:
     }
     response = session.post(f"{SUPERSET_URL}/api/v1/security/login", json=login_payload)
     response.raise_for_status()
-    return response.json()["access_token"]
+    token = response.json()["access_token"]
+
+    session.headers.update({"Authorization": f"Bearer {token}"})
+    csrf_resp = session.get(f"{SUPERSET_URL}/api/v1/security/csrf_token/")
+    csrf_resp.raise_for_status()
+    csrf_token = csrf_resp.json()["result"]
+    session.headers.update({"X-CSRFToken": csrf_token, "Referer": SUPERSET_URL})
+
+    return token
+
 
 def wait_for_superset(session: requests.Session, timeout: int = 120) -> bool:
     """Wait for the Superset API to become available."""
