@@ -2,7 +2,7 @@ import logging
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-from common.lakehouse_spark import SparkSessionContextManager
+from src.common.lakehouse_spark import SparkSessionContextManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -11,17 +11,17 @@ logging.basicConfig(
 )
 
 LAKE_STAGES = {
-    "matches": "lakehouse.stage.pg__matches",
-    "match_players": "lakehouse.stage.pg__match_players",
-    "cs_events": "lakehouse.stage.mongo__cs_events",
-    "gold_events": "lakehouse.stage.mongo__gold_events",
-    "tower_death_events": "lakehouse.stage.mongo__tower_death_events",
+    "matches": "lakehouse.stage.case03_pg__matches",
+    "match_players": "lakehouse.stage.case03_pg__match_players",
+    "cs_events": "lakehouse.stage.case03_mongo__cs_events",
+    "gold_events": "lakehouse.stage.case03_mongo__gold_events",
+    "tower_death_events": "lakehouse.stage.case03_mongo__tower_death_events",
 }
 
 LAKE_MARTS = {
-    "match_roshan": "lakehouse.mart.practice_case_03_match_roshan_mart",
-    "time_effect": "lakehouse.mart.practice_case_03_roshan_time_effect",
-    "control_effect": "lakehouse.mart.practice_case_03_roshan_control_effect",
+    "match_roshan": "lakehouse.mart.case03_pg__match_roshan_mart",
+    "time_effect": "lakehouse.mart.case03_pg__roshan_time_effect",
+    "control_effect": "lakehouse.mart.case03_pg__roshan_control_effect",
 }
 
 def main() -> None:
@@ -39,12 +39,6 @@ def main() -> None:
 
     The pipeline reads from the STAGE layer, applies business logic, 
     and writes the resulting DataFrames to the MART layer as Iceberg tables.
-
-    Usage:
-        python -m src.jobs.case_3.mart
-
-    Returns:
-        None. Side effects: Data written to lakehouse.mart layer.
     """
     with SparkSessionContextManager("case03-mart") as ctx:
         spark = ctx.spark
@@ -217,7 +211,7 @@ def main() -> None:
             )
 
             match_roshan_mart.writeTo(LAKE_MARTS["match_roshan"]).using("iceberg").createOrReplace()
-            logging.info("Written: " + LAKE_MARTS["match_roshan"])
+            logging.info(f"Written: {LAKE_MARTS['match_roshan']}")
 
         # -------------------------------------------------------------------------
         # 2. Aggregated mart: First Roshan time effect
@@ -250,7 +244,7 @@ def main() -> None:
                 group by 1, 2
             """)
             time_effect.writeTo(LAKE_MARTS["time_effect"]).using("iceberg").createOrReplace()
-            logging.info("Written: " + LAKE_MARTS["time_effect"])
+            logging.info(f"Written: {LAKE_MARTS['time_effect']}")
 
         # -------------------------------------------------------------------------
         # 3. Aggregated mart: Roshan control and match pace
@@ -283,7 +277,7 @@ def main() -> None:
                 group by 1, 2, 3
             """)
             control_effect.writeTo(LAKE_MARTS["control_effect"]).using("iceberg").createOrReplace()
-            logging.info("Written: " + LAKE_MARTS["control_effect"])
+            logging.info(f"Written: {LAKE_MARTS['control_effect']}")
 
         print("\n=== MART tables successfully created ===")
 

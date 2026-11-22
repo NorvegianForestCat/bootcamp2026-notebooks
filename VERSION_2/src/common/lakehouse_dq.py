@@ -1,10 +1,10 @@
 """
-Модуль для проверок качества данных (Data Quality) в Lakehouse.
-Поддерживает HARD (остановка пайплайна) и QUARANTINE (изоляция брака) проверки.
+Data Quality validation module for the Lakehouse architecture.
+Supports HARD (pipeline halt) and QUARANTINE (bad record isolation) checks.
 """
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
@@ -14,14 +14,35 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DQRule:
+    """
+    Represents a single Data Quality rule.
+
+    Attributes:
+        rule_id: Unique identifier for the rule (e.g., 'DQ-STG-01').
+        description: Human-readable description of what the rule checks.
+        sql_condition: SQL expression that must evaluate to True for valid rows.
+        severity: 'HARD' to fail the pipeline, 'QUARANTINE' to isolate bad rows.
+    """
     rule_id: str
     description: str
-    sql_condition: bool,
-    severity: str{"Hard", "Quarantine"}  # HARD = остановка пайплайна, QUARANTINE = изоляция брака
+    sql_condition: str
+    severity: Literal["HARD", "QUARANTINE"]
 
 
 class DQEngine:
+    """
+    Engine for applying Data Quality rules to Spark DataFrames.
+
+    Provides deduplication, HARD assertion checks, and QUARANTINE isolation
+    for rows that fail validation.
+    """
     def __init__(self, spark: SparkSession):
+        """
+        Initialize the DQEngine.
+
+        Args:
+            spark: Active SparkSession instance.
+        """
         self.spark = spark
 
     def apply_rules(
@@ -34,31 +55,38 @@ class DQEngine:
         order_col: str = "sys_insert_stamp"
     ) -> DataFrame:
         """
-        Применяет правила DQ к DataFrame.
-        
-        :param df: Входной DataFrame
-        :param table_name: Имя таблицы для логирования и quarantine
-        :param rules: Список правил DQ
-        :param run_id: Идентификатор запуска (для quarantine)
-        :param pk_cols: Колонки первичного ключа для дедупликации
-        :param order_col: Колонка для сортировки при дедупликации
-        :return: Очищенный DataFrame
+        Apply DQ rules to a DataFrame.
+
+        Args:
+            df: Input DataFrame to validate.
+            table_name: Target table name for logging and quarantine routing.
+            rules: List of DQRule objects to apply.
+            run_id: Unique identifier for the current pipeline run.
+            pk_cols: List of columns forming the primary key for deduplication.
+            order_col: Column to order by when deduplicating (default: 'sys_insert_stamp').
+
+        Returns:
+            DataFrame: Cleaned DataFrame with invalid rows removed or quarantined.
+
+        Raises:
+            RuntimeError: If a HARD rule is violated.
         """
         if not rules:
             return df
 
-        # 1. Дедупликация (если указаны PK)
+        # 1. Deduplication (if PK is specified)
         if pk_cols:
             w = Window.partitionBy(*pk_cols).orderBy(F.col(order_col).desc_nulls_last())
             df = df.withColumn("__dq_rn", F.row_number().over(w)).filter("__dq_rn = 1").drop("__dq_rn")
 
         total_rows = df.count()
         if total_rows == 0:
-            logger.warning(f"[DQ-EMPTY] {table_name}: пустой датафрейм (run_id={run_id})")
+            logger.warning(f"[DQ-EMPTY] {table_name}: empty dataframe (run_id={run_id})")
             return df
 
         checked_df = df
 
+        # 2. Evaluate all rules
         for r in rules:
             checked_df = checked_df.withColumn(
                 f"__dq_flag_{r.rule_id}",
@@ -67,6 +95,7 @@ class DQEngine:
 
         checked_df.cache()
 
+        # 3. Check HARD rules
         for r in rules:
             if r.severity == "HARD":
                 bad_cnt = checked_df.filter(~F.col(f"__dq_flag_{r.rule_id}")).count()
@@ -74,9 +103,10 @@ class DQEngine:
                     checked_df.unpersist()
                     raise RuntimeError(
                         f"[DQ HARD FAIL] {table_name} | {r.rule_id} ({r.description}): "
-                        f"нарушено в {bad_cnt}/{total_rows} строк."
+                        f"violated in {bad_cnt}/{total_rows} rows."
                     )
 
+        # 4. Process QUARANTINE rules
         q_rules = [r for r in rules if r.severity == "QUARANTINE"]
         flag_cols = [c for c in checked_df.columns if c.startswith("__dq_flag_")]
         
@@ -96,8 +126,9 @@ class DQEngine:
             
             q_cnt = quarantine_df.count()
             if q_cnt > 0:
-                logger.warning(f"[DQ QUARANTINE] {table_name}: {q_cnt} строк отправлено в карантин")
-                quarantine_df.writeTo(f"lakehouse.quarantine.{table_name}").mode("append").save()
+                logger.warning(f"[DQ QUARANTINE] {table_name}: {q_cnt} rows sent to quarantine")
+                # Use saveAsTable for Iceberg append to avoid writeTo API inconsistencies
+                quarantine_df.write.mode("append").saveAsTable(f"lakehouse.quarantine.{table_name}")
             
             clean_df = checked_df.filter(valid_expr).drop(*flag_cols)
         else:
@@ -107,6 +138,6 @@ class DQEngine:
         
         clean_cnt = clean_df.count()
         if clean_cnt < total_rows:
-            logger.info(f"[DQ PASS] {table_name}: {total_rows - clean_cnt} строк отфильтровано, осталось {clean_cnt}")
+            logger.info(f"[DQ PASS] {table_name}: {total_rows - clean_cnt} rows filtered, {clean_cnt} remaining")
             
         return clean_df

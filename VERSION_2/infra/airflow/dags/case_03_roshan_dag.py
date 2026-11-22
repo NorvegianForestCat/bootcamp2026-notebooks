@@ -1,15 +1,15 @@
+import sys
+if "/opt/spark-apps" not in sys.path: sys.path.insert(0, "/opt/spark-apps")
+
 from datetime import datetime, timedelta
-from VERSION_2.src.jobs.case_3.dq_checks import run_dq_checks
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 from jobs.extract_raw import main as extract_raw_main
-from jobs.case3.stage import main as stage_main
-from jobs.case3.mart import main as mart_main
-import sys
+from jobs.case_3.stage import main as stage_main
+from jobs.case_3.mart import main as mart_main
+from jobs.case_3.dq_checks import run_dq_checks
 import os
-
-if "/opt/spark-apps" not in sys.path: sys.path.insert(0, "/opt/spark-apps")
 
 default_args = {
     "owner": "NorvegianForestCat",
@@ -24,7 +24,7 @@ with DAG(
     dag_id="case_03_roshan_pipeline",
     default_args=default_args,
     description="ETL pipeline for case 3: Correlation between Roshan kill time and match outcome",
-    schedule="/2 0 * * *",
+    schedule="0 */2 * * *",
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=["case_3", "roshan", "etl", "dota2"],
@@ -62,5 +62,4 @@ with DAG(
             execution_timeout=timedelta(minutes=30),
         )
 
-    # Определение зависимостей между слоями
     raw_group >> stage_group >> mart_group >> quality_group

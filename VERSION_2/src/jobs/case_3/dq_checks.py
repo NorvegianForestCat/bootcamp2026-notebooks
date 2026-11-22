@@ -1,49 +1,58 @@
 """
-Data Quality проверки для Кейса №3 (Рошан и победа).
-Запускается после построения STAGE и MART слоёв.
+Data Quality checks for Case #3 (Roshan and Victory).
+Executed after the STAGE and MART layers are built.
 """
 import logging
+import sys
 from pyspark.sql import SparkSession
+
 from src.common.lakehouse_dq import DQEngine, DQRule
-from src.common.lakehouse_spark import SparkSessionContext
+from src.common.lakehouse_spark import SparkSessionContextManager
 
 logger = logging.getLogger(__name__)
 
 
-def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
+def run_dq_checks(spark: SparkSession, run_id: str = "adhoc") -> None:
     """
-    Выполняет все DQ-проверки для кейса 3.
+    Execute all Data Quality checks for Case #3.
+
+    Args:
+        spark: Active SparkSession instance.
+        run_id: Unique identifier for the current pipeline run.
+
+    Raises:
+        RuntimeError: If any HARD DQ rule is violated.
     """
     dq = DQEngine(spark)
 
-    logger.info("=== Запуск DQ-проверок для Кейса №3 ===")
+    logger.info("=== Starting DQ checks for Case #3 ===")
 
     # ==========================================================================
-    # 1. Проверки STAGE слоя
+    # 1. STAGE Layer Checks
     # ==========================================================================
-    logger.info("--- Проверки STAGE слоя ---")
+    logger.info("--- STAGE Layer Checks ---")
 
-    # 1.1. Уникальность match_id в clean_matches
-    stage_matches = spark.table("lakehouse.stage.practice_case_03_clean_matches")
+    # 1.1. Uniqueness and validity of clean_matches
+    stage_matches = spark.table("lakehouse.stage.pg__matches")
     dq.apply_rules(
         stage_matches,
-        "stage.practice_case_03_clean_matches",
+        "stage.pg__matches",
         [
             DQRule(
                 rule_id="DQ-STG-03",
-                description="Уникальность match_id",
+                description="match_id uniqueness and non-null",
                 sql_condition="match_id IS NOT NULL",
                 severity="HARD"
             ),
             DQRule(
                 rule_id="DQ-STG-05",
-                description="Длительность матча >= 10 минут (600 сек)",
+                description="Match duration >= 10 minutes (600 seconds)",
                 sql_condition="duration_sec >= 600",
-                severity="HARD"  # Должно быть уже отфильтровано, но проверяем на всякий случай
+                severity="HARD"  # Should already be filtered, but verified as a safeguard
             ),
             DQRule(
                 rule_id="DQ-STG-05B",
-                description="Ровно 10 игроков в матче",
+                description="Exactly 10 human players in the match",
                 sql_condition="human_players = 10",
                 severity="HARD"
             )
@@ -51,23 +60,23 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
         run_id=run_id,
         pk_cols=["match_id"]
     )
-    logger.info("[PASS] DQ-STG-03, DQ-STG-05, DQ-STG-05B: Матчи STAGE валидны")
+    logger.info("[PASS] DQ-STG-03, DQ-STG-05, DQ-STG-05B: STAGE matches are valid")
 
-    # 1.2. Уникальность и валидность match_players
-    stage_players = spark.table("lakehouse.stage.practice_case_03_clean_match_players")
+    # 1.2. Uniqueness and validity of clean_match_players
+    stage_players = spark.table("lakehouse.stage.pg__match_players")
     dq.apply_rules(
         stage_players,
-        "stage.practice_case_03_clean_match_players",
+        "stage.pg__match_players",
         [
             DQRule(
                 rule_id="DQ-STG-06A",
-                description="Валидный player_slot",
+                description="Valid player_slot",
                 sql_condition="player_slot IN (0, 1, 2, 3, 4, 128, 129, 130, 131, 132)",
                 severity="HARD"
             ),
             DQRule(
                 rule_id="DQ-STG-06B",
-                description="Валидный hero_id",
+                description="Valid hero_id",
                 sql_condition="hero_id > 0",
                 severity="HARD"
             )
@@ -75,23 +84,23 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
         run_id=run_id,
         pk_cols=["match_id", "player_slot"]
     )
-    logger.info("[PASS] DQ-STG-06A, DQ-STG-06B: Игроки STAGE валидны")
+    logger.info("[PASS] DQ-STG-06A, DQ-STG-06B: STAGE players are valid")
 
     # ==========================================================================
-    # 2. Проверки MART слоя
+    # 2. MART Layer Checks
     # ==========================================================================
-    logger.info("--- Проверки MART слоя ---")
+    logger.info("--- MART Layer Checks ---")
 
-    mart_matches = spark.table("lakehouse.mart.practice_case_03_match_roshan_mart")
+    mart_matches = spark.table("lakehouse.mart.pg__match_roshan_mart")
 
-    # 2.1. Уникальность match_id в MART
+    # 2.1. Uniqueness of match_id in MART
     dq.apply_rules(
         mart_matches,
         "mart.practice_case_03_match_roshan_mart",
         [
             DQRule(
                 rule_id="DQ-MRT-01",
-                description="Уникальность match_id в MART",
+                description="match_id uniqueness in MART",
                 sql_condition="match_id IS NOT NULL",
                 severity="HARD"
             )
@@ -99,9 +108,9 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
         run_id=run_id,
         pk_cols=["match_id"]
     )
-    logger.info("[PASS] DQ-MRT-01: Уникальность match_id в MART")
+    logger.info("[PASS] DQ-MRT-01: match_id uniqueness in MART verified")
 
-    # 2.2. Целостность сумм убийств Рошана (Ключевая проверка!)
+    # 2.2. Integrity of Roshan kill sums (Critical Check!)
     # roshan_killed_by_radiant + roshan_killed_by_dire + roshan_killer_side_unknown == total_roshan_kills
     dq.apply_rules(
         mart_matches,
@@ -109,7 +118,7 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
         [
             DQRule(
                 rule_id="DQ-MRT-02",
-                description="Сумма убийств Рошана по сторонам равна общему количеству",
+                description="Sum of Roshan kills by side equals total kills",
                 sql_condition="(roshan_killed_by_radiant + roshan_killed_by_dire + roshan_killer_side_unknown) = total_roshan_kills",
                 severity="HARD"
             )
@@ -117,9 +126,9 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
         run_id=run_id,
         pk_cols=["match_id"]
     )
-    logger.info("[PASS] DQ-MRT-02: Целостность сумм убийств Рошана")
+    logger.info("[PASS] DQ-MRT-02: Roshan kill sum integrity verified")
 
-    # 2.3. Диапазон вероятностей в витрине time_effect
+    # 2.3. Probability range in time_effect mart
     try:
         time_effect = spark.table("lakehouse.mart.practice_case_03_roshan_time_effect")
         dq.apply_rules(
@@ -128,7 +137,7 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
             [
                 DQRule(
                     rule_id="DQ-MRT-03",
-                    description="Винрейт в диапазоне [0, 1]",
+                    description="Win rate is within [0, 1] range",
                     sql_condition="first_roshan_win_rate BETWEEN 0 AND 1",
                     severity="HARD"
                 )
@@ -136,14 +145,14 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
             run_id=run_id,
             pk_cols=["first_roshan_time_bin", "killed_while_losing_towers"]
         )
-        logger.info("[PASS] DQ-MRT-03: Валидность вероятностей в time_effect")
+        logger.info("[PASS] DQ-MRT-03: Probability validity in time_effect verified")
     except Exception as e:
-        logger.warning(f"Таблица time_effect ещё не создана или пуста: {e}")
+        logger.warning(f"Table time_effect not yet created or empty: {e}")
 
     # ==========================================================================
-    # 3. Сводная статистика по качеству
+    # 3. Summary Statistics
     # ==========================================================================
-    logger.info("=== Сводная статистика DQ ===")
+    logger.info("=== DQ Summary Statistics ===")
     
     summary = spark.sql("""
         SELECT 
@@ -157,12 +166,11 @@ def run_dq_checks(spark: SparkSession, run_id: str = "adhoc"):
     
     summary.show(truncate=False)
     
-    logger.info("=== Все DQ-проверки для Кейса №3 успешно пройдены! ===")
+    logger.info("=== All DQ checks for Case #3 passed successfully! ===")
 
 
 if __name__ == "__main__":
-    import sys
     run_id = sys.argv[1] if len(sys.argv) > 1 else "adhoc_dq_run"
     
-    with SparkSessionContext("case-03-dq-checks") as spark:
+    with SparkSessionContextManager("case-03-dq-checks") as spark:
         run_dq_checks(spark, run_id=run_id)
