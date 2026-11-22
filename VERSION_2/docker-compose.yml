@@ -430,7 +430,7 @@ services:
       - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
 
   dota-generator:
-    image: ghcr.io/norvegianforestcat/dota-data-generator:latest
+    image: ghcr.io/norvegianforestcat/data-gen-bootcamp2026:latest
     container_name: dota-generator
     env_file:
       - .env
