@@ -1,15 +1,7 @@
-import sys
-if "/opt/spark-apps" not in sys.path: sys.path.insert(0, "/opt/spark-apps")
-
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.utils.task_group import TaskGroup
-from jobs.extract_raw import main as extract_raw_main
-from jobs.case_3.stage import main as stage_main
-from jobs.case_3.mart import main as mart_main
-from jobs.case_3.dq_checks import run_dq_checks
-import os
 
 default_args = {
     "owner": "NorvegianForestCat",
@@ -18,6 +10,14 @@ default_args = {
     "email_on_retry": False,
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
+}
+
+SPARK_COMMON = {
+    "conn_id": "spark_default",
+    "env_vars": {
+        "PYTHONPATH": "/opt:/opt/spark-apps:/opt/spark-apps/common",
+    },
+    "verbose": True,
 }
 
 with DAG(
@@ -31,35 +31,40 @@ with DAG(
 ) as dag:
 
     with TaskGroup("raw_layer", tooltip="Extraction of raw data from PostgreSQL and MongoDB") as raw_group:
-        extract_raw_task = PythonOperator(
+        extract_raw_task = SparkSubmitOperator(
             task_id="extract_raw_data",
-            python_callable=extract_raw_main,
+            application="/opt/spark-apps/jobs/extract_raw.py",
+            name="case03_extract_raw",
             execution_timeout=timedelta(hours=1),
+            **SPARK_COMMON,
         )
 
     with TaskGroup("stage_layer", tooltip="Cleaning, deduplication and validation of data") as stage_group:
-        stage_task = PythonOperator(
+        stage_task = SparkSubmitOperator(
             task_id="stage_clean_data",
-            python_callable=stage_main,
+            application="/opt/spark-apps/jobs/case_3/stage.py",
+            name="case03_stage_clean",
             execution_timeout=timedelta(hours=1),
+            **SPARK_COMMON,
         )
 
     with TaskGroup("mart_layer", tooltip="Building analytical views and aggregations") as mart_group:
-        mart_task = PythonOperator(
+        mart_task = SparkSubmitOperator(
             task_id="build_mart_roshan",
-            python_callable=mart_main,
+            application="/opt/spark-apps/jobs/case_3/mart.py",
+            name="case03_build_mart",
             execution_timeout=timedelta(hours=1),
+            **SPARK_COMMON,
         )
 
     with TaskGroup("quality_layer", tooltip="Data Quality checks") as quality_group:
-        dq_checks_task = PythonOperator(
+        dq_checks_task = SparkSubmitOperator(
             task_id="run_dq_checks",
-            python_callable=run_dq_checks,
-            op_kwargs={
-                "spark": None,
-                "run_id": "{{ run_id }}",
-            },
+            application="/opt/spark-apps/jobs/case_3/dq_checks.py",
+            name="case03_dq_checks",
+            application_args=["{{ run_id }}"],
             execution_timeout=timedelta(minutes=30),
+            **SPARK_COMMON,
         )
 
     raw_group >> stage_group >> mart_group >> quality_group
