@@ -10,7 +10,6 @@ ENV JAVA_HOME=/usr/lib/jvm/default-java
 
 USER airflow
 RUN pip install --no-cache-dir --default-timeout=100 \
-    --constraint "https://githubusercontent.com" \
-    apache-airflow-providers-apache-spark \
-    apache-airflow-providers-docker && \
-    pip install --no-cache-dir --default-timeout=100 --no-deps --force-reinstall "pyspark==3.5.8"
+    "apache-airflow-providers-apache-spark==4.11.2" \
+    "apache-airflow-providers-docker==3.14.0" \
+    "pyspark==3.5.8"
