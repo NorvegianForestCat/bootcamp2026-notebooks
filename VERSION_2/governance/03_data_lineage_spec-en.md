@@ -2,7 +2,7 @@
 
 **Version:** 2.0 (Production)  
 **Scope:** Lakehouse Dota 2 (RAW → STAGE → MART → Trino → Superset)  
-**Regulatory Driver:** GDPR, Audit, BCBS 239  
+**Regulatory Driver:** None (educational project). The architecture is designed with best practices in mind (analogous to GDPR, BCBS 239) solely to foster proper engineering habits. Full compliance with regulatory requirements is not implemented.  
 **Tool:** Apache OpenLineage → Marquez  
 **Relevance:** This document describes lineage **only for the implemented Case #3 pipeline**.
 
