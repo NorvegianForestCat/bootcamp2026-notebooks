@@ -212,7 +212,10 @@ services:
   # SPARK CLUSTER (Master + Worker)
   # ===========================================================================
   spark-master:
-    image: apache/spark:3.5.8
+    build:
+      context: ./infra/spark
+      dockerfile: Dockerfile
+    image: dota-spark:3.5.8
     profiles: [etl]
     container_name: dota-spark-master
     restart: unless-stopped
@@ -238,6 +241,9 @@ services:
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      PYSPARK_PYTHON: /usr/bin/python3.11
     deploy:
       resources:
         limits:
@@ -251,7 +257,10 @@ services:
       start_period: 90s
 
   spark-worker:
-    image: apache/spark:3.5.8
+    build:
+      context: ./infra/spark
+      dockerfile: Dockerfile
+    image: dota-spark:3.5.8
     profiles: [etl]
     container_name: dota-spark-worker
     restart: unless-stopped
@@ -281,6 +290,9 @@ services:
       SPARK_WORKER_CORES: 2
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      PYSPARK_PYTHON: /usr/bin/python3.11
     deploy:
       resources:
         limits:
