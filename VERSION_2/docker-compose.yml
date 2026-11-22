@@ -408,7 +408,7 @@ services:
     logging: *logging
 
   jupyter:
-    image: jupyter/base-notebook:python-3.11.8
+    image: quay.io/jupyter/pyspark-notebook:python-3.11
     profiles: [etl]
     container_name: dota-jupyter
     restart: unless-stopped
