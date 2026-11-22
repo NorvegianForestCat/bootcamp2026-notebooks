@@ -3,7 +3,7 @@ from airflow.operators.bash import BashOperator
 from datetime import datetime, timedelta
 
 default_args = {
-    'owner': 'data-engineering',
+    'owner': 'NorvegianForestCat',
     'depends_on_past': False,
     'email_on_failure': False,
     'email_on_retry': False,
