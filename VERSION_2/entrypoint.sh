@@ -12,6 +12,7 @@ mongo_url = "${MONGO_URL}"
 matches_count = ${MATCHES:-100}
 pg_batch_size = 500
 mongo_batch_size = 500
+seed = ${SEED:-42}
 EOF
 
 exec /usr/local/bin/dota-data-generator "$@"

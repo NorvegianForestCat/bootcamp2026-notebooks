@@ -431,6 +431,8 @@ services:
 
   dota-generator:
     container_name: dota-generator
+    env_file:
+      - .env
     build:
       context: .
       dockerfile: Dockerfile.dota
