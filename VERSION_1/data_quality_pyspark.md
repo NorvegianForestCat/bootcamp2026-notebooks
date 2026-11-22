@@ -20,7 +20,7 @@
 
 #### Полнота обогащения / Enrichment Completeness (`DQ-RAW-03`)
 * **Правило:** Для 100% матчей из `raw.matches`, у которых `stratz_parsed_at IS NOT NULL`, в `raw.death_events`, `raw.cs_events` или `raw.gold_events` должен присутствовать минимум 1 документ с соответствующим `match_id`.
-* **Реакция:** *Soft Fail / Warning* (логирование в `PostgreSQL Metadata`).
+* **Реакция:** *Soft Fail / Warning* (логирование в PostgreSQL).
 
 ---
 

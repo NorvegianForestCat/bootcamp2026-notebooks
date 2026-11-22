@@ -131,23 +131,23 @@ Automated checks executed after MART generation:
 
 ## 📚 Governance & Documentation
 
-All governance artifacts are maintained in `VERSION_1/governance/` and are actively aligned with the VERSION_2 implementation:
-- **[Data Dictionary](../VERSION_2/governance/01_data_dictionary.md)**: Comprehensive schema definitions, PII flags, and validation rules.
-- **[Data Lineage Spec](../VERSION_2/governance/03_data_lineage_spec.md)**: OpenLineage integration details and dataset mapping.
-- **[Data Quality Spec](../VERSION_2/data_quality_pyspark.md)**: Detailed DQ rules (HARD/QUARANTINE) and PySpark implementation.
-- **[SLA & Incident Runbook](../VERSION_2/sla.md)**: Service level agreements, incident classification (P1-P4), and response procedures.
-- **[ER Diagram](./er_diagram.md)**: Visual representation of entity relationships for Case 03.
+All governance artifacts for this version are maintained independently in `VERSION_2/governance/`:
+- **[Data Dictionary (RU)](governance/01_data_dictionary-ru.md)** / **[EN](governance/01_data_dictionary-en.md)**: Comprehensive schema definitions, PII flags, and validation rules.
+- **[Data Quality Spec (RU)](governance/02_data_quality_spec-ru.md)** / **[EN](governance/02_data_quality_spec-en.md)**: Detailed DQ rules (HARD/QUARANTINE) and PySpark implementation.
+- **[Data Lineage Spec (RU)](governance/03_data_lineage_spec-ru.md)** / **[EN](governance/03_data_lineage_spec-en.md)**: OpenLineage integration details and dataset mapping.
+- **[Incident Response & SLA (RU)](governance/04_incident_response_runbook-ru.md)** / **[EN](governance/04_incident_response_runbook-en.md)**: Service level agreements, incident classification (P1-P4), and response procedures.
+- **[Access Control Matrix (RU)](governance/05_access_control_matrix-ru.md)** / **[EN](governance/05_access_control_matrix-en.md)**: RBAC policies adapted to the actual infrastructure.
 
 ## 🛠 Tech Stack
 - **Orchestration**: Apache Airflow 2.11.2
 - **Processing**: Apache Spark 3.5.8 (PySpark)
-- **Storage**: Apache Iceberg (via RustFS/MinIO S3-compatible API)
+- **Storage**: Apache Iceberg (via RustFS S3-compatible API)
 - **Query Engine**: Trino 484
 - **BI**: Apache Superset 6.1.0
 - **Lineage**: Marquez 0.51.1 + OpenLineage
 - **Data Generation**: Rust (Tokio, SQLx, MongoDB driver)
 
 ## 📝 Notes for Reviewers
-- The Rust data generator (`../data-gen`) is designed to be run periodically via a dedicated Airflow DAG or manually to populate the source databases with reproducible, seeded data.
+- The Rust data generator is designed to be run periodically via a dedicated Airflow DAG or manually to populate the source databases with reproducible, seeded data.
 - All PySpark jobs use the `SparkSessionContextManager` from `src/common/lakehouse_spark.py` to ensure consistent OpenLineage event emission.
 - The pipeline is idempotent: re-running the DAG will safely `MERGE` or `createOrReplace` tables without creating duplicates.
