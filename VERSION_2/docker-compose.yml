@@ -371,7 +371,6 @@ services:
       retries: 5
       start_period: 30s
     logging: *logging
-
   marquez-web:
     image: marquezproject/marquez-web:0.51.1
     container_name: dota-marquez-web
@@ -407,6 +406,23 @@ services:
       retries: 5
       start_period: 30s
     logging: *logging
+
+  jupyter:
+    image: jupyter/base-notebook:python-3.11.8
+    profiles: [etl]
+    container_name: dota-jupyter
+    restart: unless-stopped
+    command: start-notebook.sh --NotebookApp.token=''
+    ports:
+      - "127.0.0.1:8888:8888"
+    env_file:
+    - .env
+    environment:
+      - PYTHONPATH=/home/jovyan/work
+    volumes:
+      - ./notebooks:/home/jovyan/work/notebooks
+      - ./src:/home/jovyan/work/src
+      - ./requirements.txt:/home/jovyan/work/requirements.txt
 
 # ===========================================================================
 # NAMED VOLUMES — data persists across container restarts
