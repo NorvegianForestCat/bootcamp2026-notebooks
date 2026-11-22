@@ -4,7 +4,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 from pyspark.sql.types import IntegerType, LongType
 
-from common.lakehouse_spark import SparkSessionContextManager
+from src.common.lakehouse_spark import SparkSessionContextManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,14 +24,14 @@ LAKE_SOURCES = {
 }
 
 LAKE_STAGES = {
-    "matches": "lakehouse.stage.pg__matches",
-    "match_players": "lakehouse.stage.pg__match_players",
-    "cs_events": "lakehouse.stage.mongo__cs_events",
-    "gold_events": "lakehouse.stage.mongo__gold_events",
-    "tower_death_events": "lakehouse.stage.mongo__tower_death_events",
+    "matches": "lakehouse.stage.case03_pg__matches",
+    "match_players": "lakehouse.stage.case03_pg__match_players",
+    "cs_events": "lakehouse.stage.case03_mongo__cs_events",
+    "gold_events": "lakehouse.stage.case03_mongo__gold_events",
+    "tower_death_events": "lakehouse.stage.case03_mongo__tower_death_events",
 }
 
-def log_funnel(table_label: str, step_label: str, reason: str, before_cnt: int, after_cnt: int):
+def log_funnel(table_label: str, step_label: str, reason: str, before_cnt: int, after_cnt: int) -> None:
     """
     Logs data filtering funnel step metrics.
 
@@ -45,10 +45,6 @@ def log_funnel(table_label: str, step_label: str, reason: str, before_cnt: int, 
         reason: Text description of why records were removed.
         before_cnt: Record count before filtering.
         after_cnt: Record count after filtering.
-
-    Returns:
-        None. Side effect: appends funnel metrics to global funnel_records list
-        and logs the step summary.
     """
     removed = before_cnt - after_cnt
     pct = round((removed / before_cnt * 100), 2) if before_cnt > 0 else 0.0
@@ -68,32 +64,17 @@ def main() -> None:
     Data cleaning and validation for Case 3 (Roshan).
 
     Executes the complete stage pipeline for Roshan case data processing,
-    including:
-    1. Clean matches: deduplication, null checks, 5v5 format filtering,
-       and duration validation (10 min - 5 days).
-    2. Clean match players: deduplication, slot/hero validation,
-       and referential integrity against clean matches.
-    3. Clean Roshan kill events: deduplication, time/match validation,
-       and npcId filtering for Roshan (npcId=133).
-    4. Clean Roshan gold events: deduplication, amount > 0 filter,
-       and time/match validation.
-    5. Clean tower death events: deduplication, and time/match validation.
+    including deduplication, null checks, format filtering, and duration 
+    validation for matches, players, and event tables.
 
     The pipeline writes cleaned/transformed DataFrames to the STAGE layer
     as Iceberg tables and prints a summary funnel report at the end.
-
-    Usage:
-        python -m src.jobs.case_3.stage
-
-    Returns:
-        None. Side effects: Data written to lakehouse.stage layer;
-        funnel metrics printed to console.
     """
     with SparkSessionContextManager("case03-stage") as ctx:
         spark = ctx.spark
 
         # -------------------------------------------------------------------------
-        # 1. Clean matches (stage.pg__matches)
+        # 1. Clean matches
         # -------------------------------------------------------------------------
         with ctx.lineage(
             "case03-stage-matches",
@@ -131,10 +112,10 @@ def main() -> None:
                 F.col("tower_status_dire").cast(IntegerType()).alias("tower_status_dire")
             )
             clean_matches.writeTo(LAKE_STAGES["matches"]).using("iceberg").createOrReplace()
-            logging.info("Записано: " + LAKE_STAGES["matches"])
+            logging.info(f"Written: {LAKE_STAGES['matches']}")
 
         # -------------------------------------------------------------------------
-        # 2. Clean match players (stage.pg__match_players)
+        # 2. Clean match players
         # -------------------------------------------------------------------------
         with ctx.lineage(
             "case03-stage-players",
@@ -168,7 +149,7 @@ def main() -> None:
                 F.col("win").cast("boolean").alias("win")
             )
             clean_players.writeTo(LAKE_STAGES["match_players"]).using("iceberg").createOrReplace()
-            logging.info("Written: " + LAKE_STAGES["match_players"])
+            logging.info(f"Written: {LAKE_STAGES['match_players']}")
 
         # -------------------------------------------------------------------------
         # 3. Clean Roshan kill events (cs_events)
@@ -207,12 +188,14 @@ def main() -> None:
                 F.coalesce(F.col("isFromIllusion"), F.lit(False)).cast("boolean").alias("is_from_illusion")
             )
             clean_cs.writeTo(LAKE_STAGES["cs_events"]).using("iceberg").createOrReplace()
-            logging.info("Written: " + LAKE_STAGES["cs_events"])
+            logging.info(f"Written: {LAKE_STAGES['cs_events']}")
 
+        # -------------------------------------------------------------------------
+        # 4. Clean Roshan gold events
+        # -------------------------------------------------------------------------
         with ctx.lineage(
             "case03-stage-gold-events",
-            inputs=[LAKE_SOURCES["gold_events"], 
-                    LAKE_STAGES["matches"]],
+            inputs=[LAKE_SOURCES["gold_events"], LAKE_STAGES["matches"]],
             output=LAKE_STAGES["gold_events"],
             description="Cleaning of Roshan kill events for gold allocation"
         ):
@@ -239,12 +222,14 @@ def main() -> None:
             g2 = clean_gold.count()
             log_funnel("gold_events", "2. Filter by valid matches", "Records outside match time", g1, g2)
             clean_gold.writeTo(LAKE_STAGES["gold_events"]).using("iceberg").createOrReplace()
-            logging.info("Written: " + LAKE_STAGES["gold_events"])
+            logging.info(f"Written: {LAKE_STAGES['gold_events']}")
 
+        # -------------------------------------------------------------------------
+        # 5. Clean tower death events
+        # -------------------------------------------------------------------------
         with ctx.lineage(
             "case03-stage-tower-death-events",
-            inputs=[LAKE_SOURCES["tower_death_events"], 
-                    LAKE_STAGES["matches"]],
+            inputs=[LAKE_SOURCES["tower_death_events"], LAKE_STAGES["matches"]],
             output=LAKE_STAGES["tower_death_events"],
             description="Cleaning of tower death events"
         ):
@@ -271,7 +256,7 @@ def main() -> None:
             t2 = clean_towers.count()
             log_funnel("tower_death_events", "2. Filter by valid matches", "Events outside match time", t1, t2)
             clean_towers.writeTo(LAKE_STAGES["tower_death_events"]).using("iceberg").createOrReplace()
-            logging.info("Written: " + LAKE_STAGES["tower_death_events"])
+            logging.info(f"Written: {LAKE_STAGES['tower_death_events']}")
 
         # Print final funnel report
         print("\n=== DATA CLEANING FUNNEL (STAGE) ===")
