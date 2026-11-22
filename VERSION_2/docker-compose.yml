@@ -323,7 +323,10 @@ services:
   # SUPERSET (BI & Visualization)
   # ===========================================================================
   superset:
-    image: apache/superset:6.1.0
+    build:
+      context: ./infra/superset
+      dockerfile: Dockerfile
+    image: dota-superset:6.1.0
     profiles: [bi]
     container_name: dota-superset
     restart: unless-stopped
