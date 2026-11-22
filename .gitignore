@@ -270,4 +270,3 @@ dags/__pycache__/
 dbt_packages/
 target/
 res
-clean_dc.sh
