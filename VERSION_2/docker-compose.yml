@@ -423,6 +423,8 @@ services:
       - ./notebooks:/home/jovyan/work/notebooks
       - ./src:/home/jovyan/work/src
       - ./requirements.txt:/home/jovyan/work/requirements.txt
+      - ./infra/spark/jars:/opt/spark-jars
+      - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
 
 # ===========================================================================
 # NAMED VOLUMES — data persists across container restarts
