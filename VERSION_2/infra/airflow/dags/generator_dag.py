@@ -2,7 +2,6 @@ import os
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.docker.operators.docker import DockerOperator
-from docker.types import Mount
 
 default_args = {
     "owner": "NorvegianForestCat",
@@ -30,20 +29,12 @@ with DAG(
 
     generate_data = DockerOperator(
         task_id="generate_data",
-        image="dota-generator:latest",
+        image="ghcr.io/norvegianforestcat/data-gen-bootcamp2026:latest",
         command="--matches 10000 --seed 42",
         docker_url="unix://var/run/docker.sock",
         network_mode="dota-lakehouse_default",
         auto_remove="success",
         mount_tmp_dir=False,
-        mounts=[
-            Mount(
-                source="/home/andy/DataOps/bootcamp2026-notebooks/VERSION_2/src/generator/config",
-                target="/app/config",
-                type="bind",
-                read_only=True,
-            )
-        ],
         environment={
             "PG_HOST": "postgres",
             "PG_PORT": "5432",
