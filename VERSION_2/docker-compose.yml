@@ -141,7 +141,9 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD}@postgres:5432/airflow
       AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET}
-      AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
+      AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077      
+      PYSPARK_PYTHON: /usr/bin/python3.11
+      PYSPARK_DRIVER_PYTHON: python3
     user: "${AIRFLOW_UID:-50000}:0"
     command: bash -c "airflow db migrate && (airflow users create -r Admin -u admin -p ${AIRFLOW_ADMIN_PASSWORD} -f Admin -l User -e admin@local || true)"
     volumes: *airflow_volumes
@@ -357,7 +359,7 @@ services:
       bash -c "
         (superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@local --password ${SUPERSET_ADMIN_PASSWORD} || true) &&
         superset init &&
-        (python /app/infra/superset/init_superset.py &) &&
+        (/app/.venv/bin/python /app/infra/superset/init_superset.py &) &&
         superset run -h 0.0.0.0 -p 8088"
     ports:
       - "127.0.0.1:8088:8088"
@@ -469,6 +471,7 @@ services:
       - AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${S3_SECRET_KEY}
       - AWS_REGION=us-east-1
+      - PYSPARK_PYTHON=/usr/bin/python3.11
     volumes:
       - ./notebooks:/home/jovyan/work/notebooks
       - ./src:/home/jovyan/work/src
