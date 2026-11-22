@@ -9,8 +9,8 @@ RUN apt-get update \
 ENV JAVA_HOME=/usr/lib/jvm/default-java
 
 USER airflow
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --default-timeout=100 \
+    --constraint "https://githubusercontent.com" \
     apache-airflow-providers-apache-spark \
     apache-airflow-providers-docker && \
-    pip install --no-cache-dir --force-reinstall "pyspark==3.5.8"
-
+    pip install --no-cache-dir --default-timeout=100 --no-deps --force-reinstall "pyspark==3.5.8"
