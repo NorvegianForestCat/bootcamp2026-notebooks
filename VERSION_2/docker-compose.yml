@@ -121,7 +121,7 @@ services:
   # AIRFLOW (Orchestration)
   # ===========================================================================
   airflow-init:
-    build:
+    build: &airflow_build
       context: ./infra/airflow
       dockerfile: Dockerfile
     image: dota-airflow:2.11.2
@@ -149,6 +149,7 @@ services:
     logging: *logging
 
   airflow-webserver:
+    build: *airflow_build
     image: dota-airflow:2.11.2
     profiles: [etl]
     container_name: dota-airflow-webserver
@@ -175,6 +176,7 @@ services:
       start_period: 30s
 
   airflow-scheduler:
+    build: *airflow_build
     image: dota-airflow:2.11.2
     profiles: [etl]
     container_name: dota-airflow-scheduler
@@ -459,9 +461,6 @@ services:
 
   generator:
     image: dota-generator:latest
-    build:
-      context: ./src/generator
-      dockerfile: Dockerfile
     profiles: [base]
     container_name: dota-generator
     depends_on:
