@@ -250,7 +250,6 @@ services:
       retries: 10
       start_period: 90s
 
-
   spark-worker:
     image: apache/spark:3.5.8
     profiles: [etl]

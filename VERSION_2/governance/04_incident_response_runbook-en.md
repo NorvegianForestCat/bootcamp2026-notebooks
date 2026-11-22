@@ -143,7 +143,21 @@ Fill out the incident report (root_cause, fix_description, lessons_learned).
 
 ---
 
-## 8. Prevention
+## 8. Service Availability Monitoring (Healthchecks)
+
+The `VERSION_2` infrastructure uses built-in self-diagnostic mechanisms (healthchecks) for critically important services. The Docker orchestrator uses these checks to manage startup dependencies (e.g., Airflow and Marquez wait for the `service_healthy` status from PostgreSQL before starting).
+
+**Implemented checks:**
+- **PostgreSQL**: `pg_isready -U ${PG_USER}` (verifies the DBMS is ready to accept connections).
+- **MongoDB**: `mongosh --quiet --eval 'db.runCommand({ping:1})'` (verifies database responsiveness).
+- **RustFS (S3-compatible storage)**: `wget -qO- http://127.0.0.1:9001/health` (verifies storage API availability).
+- **Airflow Webserver**: `curl -f http://127.0.0.1:8080/health` (verifies orchestrator UI and API availability).
+
+*Note:* Services like `Spark`, `Trino`, `Superset`, and `Marquez` do not have explicit HTTP healthchecks in this configuration. However, their startup is strictly tied to the successful completion of dependent services' healthchecks (primarily PostgreSQL) via the `depends_on: condition: service_healthy` mechanism.
+
+---
+
+## 9. Prevention
 
 - Daily monitoring of DQ checks.
 - Weekly review of failed Airflow jobs.
