@@ -11,5 +11,6 @@ ENV JAVA_HOME=/usr/lib/jvm/default-java
 USER airflow
 RUN pip install --no-cache-dir \
     apache-airflow-providers-apache-spark \
-    apache-airflow-providers-docker \
-    pyspark==3.5.8
+    apache-airflow-providers-docker && \
+    pip install --no-cache-dir --force-reinstall "pyspark==3.5.8"
+
