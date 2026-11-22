@@ -30,7 +30,6 @@ with DAG(
     generate_data = DockerOperator(
         task_id="generate_data",
         image="ghcr.io/norvegianforestcat/data-gen-bootcamp2026:latest",
-        command="--matches 10000 --seed 42",
         docker_url="unix://var/run/docker.sock",
         network_mode="dota-lakehouse_default",
         auto_remove="success",
@@ -48,5 +47,7 @@ with DAG(
             "MONGO_PASSWORD": mongo_pass,
             "POSTGRES_URL": f"postgresql://{pg_user}:{pg_pass}@postgres:5432/dota",
             "MONGO_URL": f"mongodb://{mongo_user}:{mongo_pass}@mongo:27017/dota_events?authSource=admin",
+            "MATCHES": 10_000,
+            "SEED": 154
         },
     )
