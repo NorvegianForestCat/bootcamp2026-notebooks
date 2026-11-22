@@ -37,3 +37,48 @@ EOF
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "marquez" <<-EOF
     GRANT ALL ON SCHEMA public TO marquez;
 EOF
+
+# Создание таблиц журналов (Retention & Orchestration Logs)
+# Эти таблицы необходимы для архитектуры, даже если автоматическая очистка не реализована в рамках буткемпа.
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOF
+    CREATE TABLE IF NOT EXISTS discover_runs (
+        run_id SERIAL PRIMARY KEY,
+        started_at TIMESTAMPTZ NOT NULL,
+        finished_at TIMESTAMPTZ,
+        duration_sec REAL,
+        count INTEGER,
+        days_ago INTEGER,
+        status TEXT CHECK (status IN ('running', 'success', 'failed')),
+        matches_discovered INTEGER,
+        players_fetched INTEGER,
+        error_message TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS enrich_runs (
+        run_id SERIAL PRIMARY KEY,
+        started_at TIMESTAMPTZ NOT NULL,
+        finished_at TIMESTAMPTZ,
+        duration_sec REAL,
+        limit_requested INTEGER,
+        status TEXT CHECK (status IN ('running', 'success', 'failed')),
+        matches_enriched INTEGER,
+        enriched_failed INTEGER,
+        error_message TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS cleanup_runs (
+        run_id SERIAL PRIMARY KEY,
+        started_at TIMESTAMPTZ NOT NULL,
+        finished_at TIMESTAMPTZ,
+        duration_sec REAL,
+        status TEXT CHECK (status IN ('running', 'success', 'failed')),
+        cutoff_dt TIMESTAMPTZ,
+        matches_deleted INTEGER,
+        players_deleted INTEGER,
+        mongodb_docs_deleted INTEGER,
+        mongodb_compacted BOOLEAN,
+        error_message TEXT
+    );
+EOF
+
+echo "Database initialization completed successfully, including retention log tables."
