@@ -29,9 +29,8 @@ SUPERSET_ADMIN_PASSWORD = os.getenv("SUPERSET_ADMIN_PASSWORD", "admin")
 TRINO_HOST = os.getenv("TRINO_HOST", "dota-trino")
 TRINO_PORT = os.getenv("TRINO_PORT", "8080")
 TRINO_CATALOG = "iceberg"
-TRINO_SCHEMA = "lakehouse"
-
-DATASET_TABLE = "mart.case03_pg__match_roshan_mart"
+TRINO_SCHEMA = "mart"
+DATASET_TABLE = "case03_pg__match_roshan_mart"
 
 def get_auth_token(session: requests.Session) -> str:
     """Authenticate with Superset and return the access token."""
@@ -68,7 +67,7 @@ def create_trino_database(session: requests.Session, token: str) -> int:
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     
     # SQLAlchemy URI for Trino
-    sqlalchemy_uri = f"trino://{TRINO_HOST}:{TRINO_PORT}/{TRINO_CATALOG}/{TRINO_SCHEMA}"
+    sqlalchemy_uri = f"trino://superset@{TRINO_HOST}:{TRINO_PORT}/{TRINO_CATALOG}/{TRINO_SCHEMA}"
     
     db_payload = {
         "database_name": "Trino Iceberg",

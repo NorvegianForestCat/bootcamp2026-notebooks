@@ -73,4 +73,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     );
 EOF
 
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOF
+    CREATE DATABASE superset OWNER ${POSTGRES_USER};
+    GRANT ALL PRIVILEGES ON DATABASE superset TO ${POSTGRES_USER};
+EOF
+
 echo "Database initialization completed successfully, including retention log tables."

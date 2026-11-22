@@ -11,6 +11,9 @@ x-airflow-volumes: &airflow_volumes
   - ./infra/airflow/logs:/opt/airflow/logs
   - ./infra/spark/jars:/opt/spark-jars
   - ./src:/opt/spark-apps
+  - ./infra/spark/spark-defaults.conf:/home/airflow/.local/lib/python3.11/site-packages/pyspark/conf/spark-defaults.conf:ro
+  - /var/run/docker.sock:/var/run/docker.sock
+  - ./src:/opt/src
 
 services:
   # ===========================================================================
@@ -118,7 +121,10 @@ services:
   # AIRFLOW (Orchestration)
   # ===========================================================================
   airflow-init:
-    image: apache/airflow:2.11.2-python3.11
+    build:
+      context: ./infra/airflow
+      dockerfile: Dockerfile
+    image: dota-airflow:2.11.2
     profiles: [etl]
     container_name: dota-airflow-init
     depends_on:
@@ -143,7 +149,7 @@ services:
     logging: *logging
 
   airflow-webserver:
-    image: apache/airflow:2.11.2-python3.11
+    image: dota-airflow:2.11.2
     profiles: [etl]
     container_name: dota-airflow-webserver
     restart: unless-stopped
@@ -169,7 +175,7 @@ services:
       start_period: 30s
 
   airflow-scheduler:
-    image: apache/airflow:2.11.2-python3.11
+    image: dota-airflow:2.11.2
     profiles: [etl]
     container_name: dota-airflow-scheduler
     restart: unless-stopped
@@ -181,20 +187,20 @@ services:
       PG_PASSWORD: ${PG_PASSWORD}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
-      PYTHONPATH: /opt/spark-apps:/opt/spark-apps/common
+      PYTHONPATH: /opt:/opt/spark-apps:/opt/spark-apps/common
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
       MONGO_USER: ${MONGO_USER}
       MONGO_PASSWORD: ${MONGO_PASSWORD}
       <<: *airflow_env
-
+    group_add: ["999"]
     user: "${AIRFLOW_UID:-50000}:0"
     command: airflow scheduler
     volumes: *airflow_volumes
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G
     logging: *logging
 
   # ===========================================================================
@@ -207,7 +213,7 @@ services:
     restart: unless-stopped
     command: >
       /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-      --host 127.0.0.1 --port 7077 --webui-port 8082
+      --host spark-master --port 7077 --webui-port 8082
     ports:
       - "127.0.0.1:7077:7077"
       - "127.0.0.1:8082:8082"
@@ -215,8 +221,9 @@ services:
       - ./src:/opt/spark-apps
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./src:/opt/src
     environment:
-      PYTHONPATH: /opt/spark-apps:/opt/spark-apps/common
+      PYTHONPATH: /opt:/opt/spark-apps:/opt/spark-apps/common
       PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
@@ -254,10 +261,11 @@ services:
       - "127.0.0.1:8083:8083"
     volumes:
       - ./src:/opt/spark-apps
+      - ./src:/opt/src
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     environment:
-      PYTHONPATH: /opt/spark-apps:/opt/spark-apps/common
+      PYTHONPATH: /opt:/opt/spark-apps:/opt/spark-apps/common
       PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
@@ -283,6 +291,20 @@ services:
     profiles: [compute]
     container_name: dota-trino
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    environment:
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -291,13 +313,8 @@ services:
       resources:
         limits:
           memory: 1536M
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    logging: *logging
+
+
 
   # ===========================================================================
   # SUPERSET (BI & Visualization)
@@ -313,13 +330,16 @@ services:
     environment:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      PG_USER: ${PG_USER:-dota}
+      PG_PASSWORD: ${PG_PASSWORD}
+      SUPERSET_DB: ${SUPERSET_DB:-superset}
     command: >
       bash -c "
         (superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@local --password ${SUPERSET_ADMIN_PASSWORD} || true) &&
         superset init &&
-        (python /app/infra/superset/init_superset.py || echo 'Superset init script failed, continuing...') &&
-        superset run -h 127.0.0.1 -p 8088
-      "
+        (python /app/infra/superset/init_superset.py &) &&
+        superset run -h 0.0.0.0 -p 8088"
     ports:
       - "127.0.0.1:8088:8088"
     volumes:
@@ -378,6 +398,7 @@ services:
       retries: 5
       start_period: 30s
     logging: *logging
+
   marquez-web:
     image: marquezproject/marquez-web:0.51.1
     container_name: dota-marquez-web
@@ -393,8 +414,8 @@ services:
       POSTGRES_USER: ${PG_USER}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       MARQUEZ_CONFIG: /usr/src/app/marquez.yml
-      MARQUEZ_HOST: ${MARQUEZ_DB_HOST:-localhost}
-      MARQUEZ_PORT: ${MARQUEZ_DB_PORT:-5432}
+      MARQUEZ_HOST: marquez
+      MARQUEZ_PORT: 5000
       MARQUEZ_NAME: ${MARQUEZ_DB_NAME:-marquez}
       MARQUEZ_USER: ${MARQUEZ_DB_USER:-marquez}
       MARQUEZ_PASSWORD: ${MARQUEZ_DB_PASSWORD}
@@ -436,35 +457,35 @@ services:
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
 
-generator:
-  image: dota-generator:latest
-  build:
-    context: ./src/generator
-    dockerfile: Dockerfile
-  profiles: [base]
-  container_name: dota-generator
-  depends_on:
-    postgres: { condition: service_healthy }
-    mongo: { condition: service_healthy }
-  environment:
-    PG_HOST: postgres
-    PG_PORT: 5432
-    PG_DB: ${PG_DB:-dota}
-    PG_USER: ${PG_USER:-dota}
-    PG_PASSWORD: ${PG_PASSWORD}
-    MONGO_HOST: mongo
-    MONGO_PORT: 27017
-    MONGO_DB: dota_events
-    MONGO_USER: ${MONGO_USER:-dota}
-    MONGO_PASSWORD: ${MONGO_PASSWORD}
-    POSTGRES_URL: postgresql://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DB}
-    MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin
-    MATCHES: ${MATCHES:-1000}
-    SEED: ${SEED:-42}
-  volumes:
-    - ./src/generator/config:/app/config:ro
-  restart: "no"
-  mem_limit: 512m
+  generator:
+    image: dota-generator:latest
+    build:
+      context: ./src/generator
+      dockerfile: Dockerfile
+    profiles: [base]
+    container_name: dota-generator
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    environment:
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_DB: ${PG_DB:-dota}
+      PG_USER: ${PG_USER:-dota}
+      PG_PASSWORD: ${PG_PASSWORD}
+      MONGO_HOST: mongo
+      MONGO_PORT: 27017
+      MONGO_DB: dota_events
+      MONGO_USER: ${MONGO_USER:-dota}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      POSTGRES_URL: postgresql://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DB}
+      MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin
+      MATCHES: ${MATCHES:-1000}
+      SEED: ${SEED:-42}
+    volumes:
+      - ./src/generator/config:/app/config:ro
+    restart: "no"
+    mem_limit: 512m
 
 # ===========================================================================
 # NAMED VOLUMES — data persists across container restarts
