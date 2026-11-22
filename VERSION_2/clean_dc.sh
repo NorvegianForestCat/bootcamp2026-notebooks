@@ -14,9 +14,11 @@ run_and_log() {
 > res
 
 run_and_log docker compose --profile '*' down -v --remove-orphans
-run_and_log docker volume rm dota-lakehouse_pg_data
+run_and_log docker builder prune -af
+run_and_log docker image prune -af
 
 run_and_log cat infra/postgres/init/01-init.sh
+run_and_log docker compose --profile base --profile etl --profile compute --profile bi --profile lineage pull --ignore-buildable
 run_and_log docker compose --profile base --profile etl --profile compute --profile bi --profile lineage up -d --build
 
 run_and_log sleep $time

@@ -460,7 +460,7 @@ services:
       - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
 
   generator:
-    image: dota-generator:latest
+    image: ghcr.io/norvegianforestcat/data-gen-bootcamp2026:latest
     profiles: [base]
     container_name: dota-generator
     depends_on:
@@ -481,10 +481,9 @@ services:
       MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin
       MATCHES: ${MATCHES:-1000}
       SEED: ${SEED:-42}
-    volumes:
-      - ./src/generator/config:/app/config:ro
     restart: "no"
     mem_limit: 512m
+
 
 # ===========================================================================
 # NAMED VOLUMES — data persists across container restarts
