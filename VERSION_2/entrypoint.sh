@@ -6,7 +6,7 @@ mkdir -p /app/config
 cat <<EOF > /app/config/default.toml
 [db]
 postgres_url = "${POSTGRES_URL}"
-mongo_url = "${MONGO_URL}"
+mongo_url = "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin"
 
 [generation]
 matches_count = ${MATCHES:-100}
