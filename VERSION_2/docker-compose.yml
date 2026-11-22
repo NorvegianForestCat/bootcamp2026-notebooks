@@ -430,6 +430,7 @@ services:
       - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
 
   dota-generator:
+    image: ghcr.io/norvegianforestcat/dota-data-generator:latest
     container_name: dota-generator
     env_file:
       - .env
@@ -438,9 +439,6 @@ services:
       - MONGO_URL=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin
       - MATCHES=${MATCHES:-1000}
       - SEED=${SEED:-42}
-    build:
-      context: .
-      dockerfile: Dockerfile.dota
     profiles: [tools]
     restart: "no"
 # ===========================================================================
