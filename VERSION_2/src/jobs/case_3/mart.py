@@ -238,7 +238,7 @@ def main() -> None:
                     round(avg(duration_min), 2) as avg_match_duration_min,
                     round(avg(total_roshan_kills), 2) as avg_roshans_per_match,
                     round(avg(first_roshan_gold), 0) as avg_first_roshan_gold
-                from lakehouse.mart.practice_case_03_match_roshan_mart
+                from lakehouse.mart.case03_pg__match_roshan_mart
                 where first_roshan_time_bin <> '0_No_Roshan'
                   and first_roshan_team_won is not null
                 group by 1, 2
@@ -273,7 +273,7 @@ def main() -> None:
                         when roshan_control_status in ('Radiant_Lead', 'Dire_Lead') then 0.0
                         else null
                     end) as leader_win_rate
-                from lakehouse.mart.practice_case_03_match_roshan_mart
+                from lakehouse.mart.case03_pg__match_roshan_mart
                 group by 1, 2, 3
             """)
             control_effect.writeTo(LAKE_MARTS["control_effect"]).using("iceberg").createOrReplace()
