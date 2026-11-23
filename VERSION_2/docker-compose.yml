@@ -14,6 +14,7 @@ x-airflow-volumes: &airflow_volumes
   - ./infra/spark/spark-defaults.conf:/home/airflow/.local/lib/python3.11/site-packages/pyspark/conf/spark-defaults.conf:ro
   - /var/run/docker.sock:/var/run/docker.sock
   - ./src:/opt/src
+  - ivy_cache:/tmp/.ivy2
 
 services:
   # ===========================================================================
@@ -234,6 +235,7 @@ services:
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ./src:/opt/src
+      - ivy_cache:/tmp/.ivy2
     environment:
       PYTHONPATH: /opt:/opt/spark-apps:/opt/spark-apps/common
       PG_USER: ${PG_USER}
@@ -281,6 +283,7 @@ services:
       - ./src:/opt/src
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ivy_cache:/tmp/.ivy2
     environment:
       PYTHONPATH: /opt:/opt/spark-apps:/opt/spark-apps/common
       PG_USER: ${PG_USER}
@@ -513,3 +516,4 @@ volumes:
   mongo_data:
   rustfs_data:
   superset_data:
+  ivy_cache:
