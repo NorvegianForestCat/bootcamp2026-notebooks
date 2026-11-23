@@ -293,7 +293,7 @@ services:
       MONGO_PASSWORD: ${MONGO_PASSWORD}
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
-      SPARK_WORKER_MEMORY: 4ёg
+      SPARK_WORKER_MEMORY: 4g
       SPARK_WORKER_CORES: 1
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
@@ -480,7 +480,6 @@ services:
       - ./src:/home/jovyan/work/src
       - ./requirements.txt:/home/jovyan/work/requirements.txt
       - ./infra/spark/jars:/opt/spark-jars
-      - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
       - ./infra/spark/spark-jupyter.conf:/usr/local/spark/conf/spark-defaults.conf:ro
 
   generator:
