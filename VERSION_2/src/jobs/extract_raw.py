@@ -95,6 +95,10 @@ def write_table(
         df_raw = df_raw.withColumn("loaded_at", now_ts)
 
     # If table does not exist, create it
+    for field in df_raw.schema.fields:
+        if field.dataType.typeName() == "void":
+            df_raw = df_raw.withColumn(field.name, fn.col(field.name).cast("string"))
+
     if not ctx.catalog.tableExists(target_table):
         df_raw.writeTo(target_table).using("iceberg").createOrReplace()
         logging.info(f"[extract] New table created: {target_table}")
