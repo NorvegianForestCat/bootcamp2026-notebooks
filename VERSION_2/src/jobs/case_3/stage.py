@@ -163,7 +163,7 @@ def main() -> None:
             raw_cs = spark.table(LAKE_SOURCES["cs_events"])
             cs0 = raw_cs.count()
 
-            w_cs = Window.partitionBy("match_id", "id").orderBy(F.col("sys_insert_stamp").desc())
+            w_cs = Window.partitionBy("match_id", "_id").orderBy(F.col("sys_insert_stamp").desc())
             cs_dedup = raw_cs.withColumn("rn", F.row_number().over(w_cs)).filter("rn = 1").drop("rn")
             cs1 = cs_dedup.count()
             log_funnel("cs_events", "1. Deduplication", "Duplicate documents by ObjectId", cs0, cs1)
@@ -179,7 +179,7 @@ def main() -> None:
             log_funnel("cs_events", "2. Validation of Time and Match", "Events outside [0, duration] or from filtered matches", cs1, cs2)
 
             clean_cs = cs_in_matches.select(
-                F.col("id").alias("event_id"),
+                F.col("_id").alias("event_id"),
                 F.col("match_id").cast(LongType()).alias("match_id"),
                 F.col("time").cast(IntegerType()).alias("time_sec"),
                 F.col("steam_account_id").cast(LongType()).alias("steam_account_id"),
@@ -203,7 +203,7 @@ def main() -> None:
 
             raw_g = spark.table(LAKE_SOURCES["gold_events"]).filter(F.upper(F.col("reason")) == "ROSHAN")
             g0 = raw_g.count()
-            w_g = Window.partitionBy("match_id", "id").orderBy(F.col("sys_insert_stamp").desc())
+            w_g = Window.partitionBy("match_id", "_id").orderBy(F.col("sys_insert_stamp").desc())
             g_dedup = raw_g.withColumn("rn", F.row_number().over(w_g)).filter("rn = 1 AND amount > 0").drop("rn")
             g1 = g_dedup.count()
             log_funnel("gold_events", "1. Deduplication and amount > 0", "Duplicate ObjectId or zero allocation", g0, g1)
@@ -212,7 +212,7 @@ def main() -> None:
                 g_dedup.join(matches_bounds, on="match_id", how="inner")
                 .filter(F.col("time").between(0, F.col("duration_sec")))
                 .select(
-                    F.col("id").alias("event_id"),
+                    F.col("_id").alias("event_id"),
                     F.col("match_id").cast(LongType()).alias("match_id"),
                     F.col("time").cast(IntegerType()).alias("time_sec"),
                     F.col("steam_account_id").cast(LongType()).alias("steam_account_id"),
@@ -237,7 +237,7 @@ def main() -> None:
 
             raw_t = spark.table(LAKE_SOURCES["tower_death_events"])
             t0 = raw_t.count()
-            w_t = Window.partitionBy("match_id", "id").orderBy(F.col("sys_insert_stamp").desc())
+            w_t = Window.partitionBy("match_id", "_id").orderBy(F.col("sys_insert_stamp").desc())
             t_dedup = raw_t.withColumn("rn", F.row_number().over(w_t)).filter("rn = 1").drop("rn")
             t1 = t_dedup.count()
             log_funnel("tower_death_events", "1. Deduplication", "Duplicate documents by ObjectId", t0, t1)
@@ -246,7 +246,7 @@ def main() -> None:
                 t_dedup.join(matches_bounds, on="match_id", how="inner")
                 .filter(F.col("time").between(0, F.col("duration_sec")))
                 .select(
-                    F.col("id").alias("event_id"),
+                    F.col("_id").alias("event_id"),
                     F.col("match_id").cast(LongType()).alias("match_id"),
                     F.col("time").cast(IntegerType()).alias("time_sec"),
                     F.col("radiant").cast(IntegerType()).alias("radiant_tower_mask"),
