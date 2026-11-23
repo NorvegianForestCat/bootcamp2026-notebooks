@@ -1,12 +1,10 @@
+FROM eclipse-temurin:11-jre AS jre
 FROM apache/airflow:2.11.2-python3.11
 
 USER root
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends default-jre-headless \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV JAVA_HOME=/usr/lib/jvm/default-java
+COPY --from=jre /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 USER airflow
 RUN pip install --no-cache-dir --default-timeout=100 \
