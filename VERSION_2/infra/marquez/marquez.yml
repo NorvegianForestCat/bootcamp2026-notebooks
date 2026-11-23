@@ -1,0 +1,32 @@
+server:
+  applicationConnectors:
+  - type: http
+    port: ${MARQUEZ_PORT:-5000}
+  adminConnectors:
+  - type: http
+    port: ${MARQUEZ_ADMIN_PORT:-5001}
+
+db:
+  driverClass: org.postgresql.Driver
+  url: jdbc:postgresql://${POSTGRES_HOST:-localhost}:${MARQUEZ_DB_PORT:-5432}/${MARQUEZ_DB_NAME:-marquez}
+  user: ${MARQUEZ_DB_USER:-marquez}
+  password: ${MARQUEZ_DB_PASSWORD}
+  properties:
+    charSet: UTF-8
+    charSetResults: UTF-8
+    charSetServer: UTF-8
+    charSetConnection: UTF-8
+    charSetDatabase: UTF-8
+    charSetClient: UTF-8
+  maxWaitForConnection: 1 minute
+  validationQuery: SELECT 1
+  minSize: 8
+  maxSize: 32
+  checkConnectionWhileIdle: false
+  evictionInterval: 10 minutes
+  minIdleTime: 1 minute
+
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  loggers:
+    marquez.db: ${LOG_LEVEL:-INFO}

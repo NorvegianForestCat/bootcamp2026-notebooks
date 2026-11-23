@@ -10,6 +10,11 @@ x-airflow-volumes: &airflow_volumes
   - ./infra/airflow/dags:/opt/airflow/dags
   - ./infra/airflow/logs:/opt/airflow/logs
   - ./infra/spark/jars:/opt/spark-jars
+  - ./src:/opt/spark-apps
+  - ./infra/spark/spark-defaults.conf:/home/airflow/.local/lib/python3.11/site-packages/pyspark/conf/spark-defaults.conf:ro
+  - /var/run/docker.sock:/var/run/docker.sock
+  - ./src:/opt/src
+  - ivy_cache:/tmp/.ivy2
 
 services:
   # ===========================================================================
@@ -39,6 +44,23 @@ services:
       timeout: 5s
       retries: 5
 
+  rustfs-init:
+    image: rustfs/rc:v0.1.38
+    restart: "no"
+    container_name: dota-rustfs-init
+    profiles: [base]
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    entrypoint: >
+      /bin/sh -c "
+      rc alias set local http://rustfs:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY --bucket-lookup path &&
+      rc mb local/dota-lakehouse || true
+      "
+
   # ===========================================================================
   # POSTGRESQL (Metadata + Lakehouse catalog)
   # Ports NOT exposed — access via Docker network or SSH tunnel only
@@ -49,11 +71,12 @@ services:
     container_name: dota-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${PG_USER:-dota}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
-      POSTGRES_DB: ${PG_DB:-dota}
+      POSTGRES_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB}
       AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD}
       MARQUEZ_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
     command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=100"]
     volumes:
       - pg_data:/var/lib/postgresql/data
@@ -63,10 +86,12 @@ services:
         limits:
           memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-dota}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 300s
+
     logging: *logging
 
   # ===========================================================================
@@ -74,12 +99,12 @@ services:
   # Ports NOT exposed — access via Docker network or SSH tunnel only
   # ===========================================================================
   mongo:
-    image: mongo:6
+    image: mongo:4.4
     profiles: [base]
     container_name: dota-mongo
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-dota}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     command: ["mongod", "--wiredTigerCacheSizeGB", "0.5", "--bind_ip_all"]
     volumes:
@@ -89,17 +114,21 @@ services:
         limits:
           memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1})'"]
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
       interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 90s
     logging: *logging
 
   # ===========================================================================
   # AIRFLOW (Orchestration)
   # ===========================================================================
   airflow-init:
-    image: apache/airflow:2.11.2-python3.11
+    build: &airflow_build
+      context: ./infra/airflow
+      dockerfile: Dockerfile
+    image: dota-airflow:2.11.2
     profiles: [etl]
     container_name: dota-airflow-init
     depends_on:
@@ -113,7 +142,9 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD}@postgres:5432/airflow
       AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET}
-      AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
+      AIRFLOW_CONN_SPARK_DEFAULT: '{"conn_type": "spark", "host": "spark://spark-master", "port": 7077}'
+      PYSPARK_PYTHON: /usr/bin/python3.11
+      PYSPARK_DRIVER_PYTHON: python3
     user: "${AIRFLOW_UID:-50000}:0"
     command: bash -c "airflow db migrate && (airflow users create -r Admin -u admin -p ${AIRFLOW_ADMIN_PASSWORD} -f Admin -l User -e admin@local || true)"
     volumes: *airflow_volumes
@@ -124,14 +155,17 @@ services:
     logging: *logging
 
   airflow-webserver:
-    image: apache/airflow:2.11.2-python3.11
+    build: *airflow_build
+    image: dota-airflow:2.11.2
     profiles: [etl]
     container_name: dota-airflow-webserver
     restart: unless-stopped
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-    environment: *airflow_env
+    environment:
+      <<: *airflow_env
+      AIRFLOW__WEBSERVER__WORKERS: 2
     user: "${AIRFLOW_UID:-50000}:0"
     command: airflow webserver --port 8080
     ports:
@@ -140,17 +174,18 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G
     logging: *logging
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
       interval: 1m30s
       timeout: 30s
       retries: 5
-      start_period: 30s
+      start_period: 600s
 
   airflow-scheduler:
-    image: apache/airflow:2.11.2-python3.11
+    build: *airflow_build
+    image: dota-airflow:2.11.2
     profiles: [etl]
     container_name: dota-airflow-scheduler
     restart: unless-stopped
@@ -158,59 +193,80 @@ services:
       airflow-init:
         condition: service_completed_successfully
     environment: 
-      PG_USER: ${PG_USER:-dota}
+      PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
+      PYTHONPATH: /opt:/opt/spark-apps:/opt/spark-apps/common
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
       <<: *airflow_env
-
+    group_add: ["999"]
     user: "${AIRFLOW_UID:-50000}:0"
     command: airflow scheduler
     volumes: *airflow_volumes
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G
     logging: *logging
 
   # ===========================================================================
   # SPARK CLUSTER (Master + Worker)
   # ===========================================================================
   spark-master:
-    image: apache/spark:3.5.8
+    build:
+      context: ./infra/spark
+      dockerfile: Dockerfile
+    image: dota-spark:3.5.8
     profiles: [etl]
     container_name: dota-spark-master
     restart: unless-stopped
     command: >
       /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-      --host 0.0.0.0 --port 7077 --webui-port 8082
+      --host spark-master --port 7077 --webui-port 8082
     ports:
       - "127.0.0.1:7077:7077"
       - "127.0.0.1:8082:8082"
     volumes:
-      - ./infra/spark/apps:/opt/spark-apps
+      - ./src:/opt/spark-apps
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./src:/opt/src
+      - ivy_cache:/tmp/.ivy2
+    environment:
+      PYTHONPATH: /opt:/opt/spark-apps:/opt/spark-apps/common
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      PYSPARK_PYTHON: /usr/bin/python3.11
     deploy:
       resources:
         limits:
           memory: 1G
     logging: *logging
-    environment:
-      PG_USER: ${PG_USER:-dota}
-      PG_PASSWORD: ${PG_PASSWORD}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082/ || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://spark-master:8082/ || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 90s
 
   spark-worker:
-    image: apache/spark:3.5.8
+    build:
+      context: ./infra/spark
+      dockerfile: Dockerfile
+    image: dota-spark:3.5.8
     profiles: [etl]
     container_name: dota-spark-worker
     restart: unless-stopped
@@ -218,25 +274,36 @@ services:
       /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
       spark://spark-master:7077 --webui-port 8083
     depends_on:
-      spark-master:
+      spark-master: 
         condition: service_healthy
     ports:
       - "127.0.0.1:8083:8083"
     volumes:
-      - ./infra/spark/apps:/opt/spark-apps
+      - ./src:/opt/spark-apps
+      - ./src:/opt/src
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ivy_cache:/tmp/.ivy2
     environment:
-      SPARK_WORKER_MEMORY: 2g
-      SPARK_WORKER_CORES: 2
-      PG_USER: ${PG_USER:-dota}
+      PYTHONPATH: /opt:/opt/spark-apps:/opt/spark-apps/common
+      PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      SPARK_WORKER_MEMORY: 4g
+      SPARK_WORKER_CORES: 1
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      PYSPARK_PYTHON: /usr/bin/python3.11
     deploy:
       resources:
         limits:
-          memory: 3G
+          memory: 6G
     logging: *logging
 
   # ===========================================================================
@@ -247,6 +314,20 @@ services:
     profiles: [compute]
     container_name: dota-trino
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    environment:
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -255,19 +336,15 @@ services:
       resources:
         limits:
           memory: 1536M
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    logging: *logging
 
   # ===========================================================================
   # SUPERSET (BI & Visualization)
   # ===========================================================================
   superset:
-    image: apache/superset:6.1.0
+    build:
+      context: ./infra/superset
+      dockerfile: Dockerfile
+    image: dota-superset:6.1.0
     profiles: [bi]
     container_name: dota-superset
     restart: unless-stopped
@@ -277,11 +354,21 @@ services:
     environment:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
-    command: bash -c "(superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@local --password ${SUPERSET_ADMIN_PASSWORD} || true) && superset init && superset run -h 0.0.0.0 -p 8088"
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      PG_USER: ${PG_USER:-dota}
+      PG_PASSWORD: ${PG_PASSWORD}
+      SUPERSET_DB: ${SUPERSET_DB:-superset}
+    command: >
+      bash -c "
+        (superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@local --password ${SUPERSET_ADMIN_PASSWORD} || true) &&
+        superset init &&
+        (/app/.venv/bin/python /app/infra/superset/init_superset.py &) &&
+        superset run -h 0.0.0.0 -p 8088"
     ports:
       - "127.0.0.1:8088:8088"
     volumes:
       - ./infra/superset/superset_config.py:/app/superset_config.py:ro
+      - ./infra/superset/init_superset.py:/app/infra/superset/init_superset.py:ro
       - superset_data:/app/superset_home
     deploy:
       resources:
@@ -292,7 +379,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 300s
     logging: *logging
 
   # ===========================================================================
@@ -307,26 +394,119 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      MARQUEZ_PORT: 5000
-      MARQUEZ_ADMIN_PORT: 5001
+      MARQUEZ_PORT: ${MARQUEZ_PORT:-5000}
+      MARQUEZ_ADMIN_PORT: ${MARQUEZ_ADMIN_PORT:-5001}
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: marquez
-      POSTGRES_USER: ${PG_USER:-dota}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_PORT: ${PG_PORT:-5432}
+      POSTGRES_DB: ${PG_DB}
+      MARQUEZ_CONFIG: /usr/src/app/marquez.yml
+      MARQUEZ_DB_HOST: ${MARQUEZ_DB_HOST:-localhost}
+      MARQUEZ_DB_PORT: ${MARQUEZ_DB_PORT:-5432}
+      MARQUEZ_DB_NAME: ${MARQUEZ_DB_NAME:-marquez}
+      MARQUEZ_DB_USER: ${MARQUEZ_DB_USER:-marquez}
+      MARQUEZ_DB_PASSWORD: ${MARQUEZ_DB_PASSWORD}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "127.0.0.1:5000:5000"
+      - "127.0.0.1:5001:5001"
+    volumes:
+      - ./infra/marquez/marquez.yml:/usr/src/app/marquez.yml:ro
     deploy:
       resources:
         limits:
           memory: 1G
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5001/healthcheck || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 300s
     logging: *logging
+
+  marquez-web:
+    image: marquezproject/marquez-web:0.51.1
+    container_name: dota-marquez-web
+    profiles: [lineage]
+    restart: unless-stopped
+    depends_on:
+      marquez:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: ${PG_PORT:-5432}
+      POSTGRES_DB: ${PG_DB}
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      MARQUEZ_CONFIG: /usr/src/app/marquez.yml
+      MARQUEZ_HOST: marquez
+      MARQUEZ_PORT: 5000
+      MARQUEZ_NAME: ${MARQUEZ_DB_NAME:-marquez}
+      MARQUEZ_USER: ${MARQUEZ_DB_USER:-marquez}
+      MARQUEZ_PASSWORD: ${MARQUEZ_DB_PASSWORD}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      WEB_PORT: 3000
+    ports:
+      - "127.0.0.1:3000:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 300s
+    logging: *logging
+
+  jupyter:
+    image: quay.io/jupyter/pyspark-notebook:spark-3.5.3
+    profiles: [etl]
+    container_name: dota-jupyter
+    restart: unless-stopped
+    command: start-notebook.sh --NotebookApp.token=''
+    ports:
+      - "127.0.0.1:8888:8888"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/home/jovyan/work:/home/jovyan/work/src:/home/jovyan/work/src/common
+      - AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY}
+      - AWS_SECRET_ACCESS_KEY=${S3_SECRET_KEY}
+      - AWS_REGION=us-east-1
+      - PYSPARK_PYTHON=/opt/conda/bin/python
+    volumes:
+      - ./notebooks:/home/jovyan/work/notebooks
+      - ./src:/home/jovyan/work/src
+      - ./requirements.txt:/home/jovyan/work/requirements.txt
+      - ./infra/spark/jars:/opt/spark-jars
+      - ./infra/spark/spark-jupyter.conf:/usr/local/spark/conf/spark-defaults.conf:ro
+
+  generator:
+    image: ghcr.io/norvegianforestcat/data-gen-bootcamp2026:latest
+    profiles: [base]
+    container_name: dota-generator
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    environment:
+      PG_HOST: ${PG_HOST:-postgres}
+      PG_PORT: ${PG_PORT:-5432}
+      PG_DB: ${PG_DB:-dota}
+      PG_USER: ${PG_USER:-dota}
+      PG_PASSWORD: ${PG_PASSWORD}
+      MONGO_HOST: ${MONGO_HOST:-mongo}
+      MONGO_PORT: ${MONGO_PORT:-27017}
+      MONGO_DB: ${MONGO_DB:-dota_events}
+      MONGO_USER: ${MONGO_USER:-dota}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      POSTGRES_URL: postgresql://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DB}
+      MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin
+      MATCHES: ${MATCHES:-1000}
+      SEED: ${SEED:-42}
+    restart: "no"
+    mem_limit: 512m
+
 
 # ===========================================================================
 # NAMED VOLUMES — data persists across container restarts
@@ -336,3 +516,4 @@ volumes:
   mongo_data:
   rustfs_data:
   superset_data:
+  ivy_cache:

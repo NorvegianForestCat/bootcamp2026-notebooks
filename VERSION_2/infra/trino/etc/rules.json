@@ -1,8 +1,7 @@
 {
-    "catalogs": 
-    [
+    "catalogs": [
         {
-        "user": "superset",
+            "user": "superset",
             "catalog": ".*",
             "allow": "read-only"
         },
