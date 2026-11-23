@@ -481,6 +481,7 @@ services:
       - ./requirements.txt:/home/jovyan/work/requirements.txt
       - ./infra/spark/jars:/opt/spark-jars
       - ./infra/spark/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
+      - ivy_cache:/tmp/.ivy2
 
   generator:
     image: ghcr.io/norvegianforestcat/data-gen-bootcamp2026:latest
