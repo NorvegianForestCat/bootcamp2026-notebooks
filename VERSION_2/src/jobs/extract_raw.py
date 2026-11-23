@@ -246,11 +246,12 @@ def extract_mongo(
     if not collections:
         client = ctx._jvm.com.mongodb.client.MongoClients.create(mongo_uri)
         try:
-            collections = [
-                name
-                for name in client.getDatabase(mongo_db).listCollectionNames()
-                if not name.startswith("system.")
-            ]
+            it = client.getDatabase(mongo_db).listCollectionNames().iterator()
+            collections = []
+            while it.hasNext():
+                name = it.next()
+                if not name.startswith("system."):
+                    collections.append(name)
         finally:
             client.close()
 
