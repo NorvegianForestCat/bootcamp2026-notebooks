@@ -73,11 +73,13 @@ class DQEngine:
         """
         if not rules:
             return df
-
+        
         # 1. Deduplication (if PK is specified)
         if pk_cols:
-            w = Window.partitionBy(*pk_cols).orderBy(F.col(order_col).desc_nulls_last())
+            order_expr = F.col(order_col).desc_nulls_last() if order_col in df.columns else F.lit(1)
+            w = Window.partitionBy(*pk_cols).orderBy(order_expr)
             df = df.withColumn("__dq_rn", F.row_number().over(w)).filter("__dq_rn = 1").drop("__dq_rn")
+
 
         total_rows = df.count()
         if total_rows == 0:
